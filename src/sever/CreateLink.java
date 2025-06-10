@@ -5,15 +5,12 @@ import java.io.OutputStream;
 
 public class CreateLink {
     public void handle(String jsonBody, OutputStream out) throws IOException {
-        String nickname = ServiceUtils.extractStringField(jsonBody, "nickname");
-        String message = ServiceUtils.extractStringField(jsonBody, "message");
+        boolean isSolo = ServiceUtils.extractBooleanField(jsonBody, "isSolo");
+        String[] userID = ServiceUtils.extractStringField(jsonBody, "userID").split(",");
 
-        if (nickname.isEmpty() || message.isEmpty()) {
-            ServiceUtils.sendErrorResponse(out, 400, "Missing required fields");
-            return;
-        }
+        System.out.println(isSolo);
+        for(String a : userID) System.out.println(a);
 
-        System.out.println("New message from " + nickname + ": " + message);
         ServiceUtils.sendSuccessResponse(out);
     }
 }
