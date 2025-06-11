@@ -36,7 +36,8 @@ public class FriendsSQL {
     public static void addFriend(String dbPath, String friend_id, String ip, int port) throws SQLException {
         try (Connection conn = getConnection(dbPath);
              PreparedStatement pstmt = conn.prepareStatement(
-                     "INSERT INTO Friends (friend_id, ip_address, port) VALUES (?, ?, ?)")) {
+
+                     "INSERT INTO Friends (friend_id, ip_address, port) VALUES (?, ?, ?) " + "ON CONFLICT(friend_id) DO UPDATE SET ip_address=excluded.ip_address, port=excluded.port")) {
 
             pstmt.setString(1, friend_id);
             pstmt.setString(2, ip);

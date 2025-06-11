@@ -242,5 +242,92 @@ public class GroupSQL {
     }
 
 
+    // 以下方法以弃用
+    // 更新成员群组头像路径
+    public static boolean updateMemberAvatar(String dbPath, String groupId,
+                                             String memberId, String avatarPath) {
+        String sql = "UPDATE GroupMembers SET avatar_path_group = ? WHERE group_id = ? AND member_id = ?";
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, avatarPath);
+            pstmt.setString(2, groupId);
+            pstmt.setString(3, memberId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    // 获取成员群组头像路径
+    public static String getMemberAvatar(String dbPath, String groupId, String memberId) {
+        String sql = "SELECT avatar_path_group FROM GroupMembers WHERE group_id = ? AND member_id = ?";
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, groupId);
+            pstmt.setString(2, memberId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next() ? rs.getString("avatar_path_group") : null;
+            }
+        } catch (SQLException e) {
+            return null;
+        }
+    }
+
+    // 更新群组头像路径
+    public static boolean updateGroupAvatar(String dbPath, String groupId, String avatarPath) {
+        String sql = "UPDATE Groups SET avatar_path = ? WHERE group_id = ?";
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, avatarPath);
+            pstmt.setString(2, groupId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    // 获取群组头像路径
+    public static String getGroupAvatar(String dbPath, String groupId) {
+        String sql = "SELECT avatar_path FROM Groups WHERE group_id = ?";
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, groupId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next() ? rs.getString("avatar_path") : null;
+            }
+        } catch (SQLException e) {
+            return null;
+        }
+    }
+
+    // 获取所有群组的头像信息和群ID
+    public static Map<String, String> getAllGroupAvatars(String dbPath) {
+        String sql = "SELECT group_id, avatar_path FROM Groups";
+        Map<String, String> avatars = new HashMap<>();
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                avatars.put(rs.getString("group_id"), rs.getString("avatar_path"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return avatars;
+    }
+
+    public static boolean updateGroupName(String dbPath, String groupId, String newGroupName) {
+    String sql = "UPDATE Groups SET group_name = ? WHERE group_id = ?";
+    try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+         PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        pstmt.setString(1, newGroupName);
+        pstmt.setString(2, groupId);
+        return pstmt.executeUpdate() > 0;
+    } catch (SQLException e) {
+        return false;
+    }
+}
+
+
 
 }

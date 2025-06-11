@@ -1,13 +1,17 @@
-package sever;
+package sever.user;
+
+import core.Config;
+import sever.ServiceUtils;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-public class ServiceInterfaces {
+
+public class UserInterfaces {
     private static final int MAX_REQUEST_SIZE = 8192;
 
-    public ServiceInterfaces(int port) throws IOException {
+    public UserInterfaces(int port) throws IOException {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Server started on port " + port);
             while (true) {
@@ -55,9 +59,21 @@ public class ServiceInterfaces {
 
             // 根据路径分发处理逻辑
             if (requestPath.equals("/chat")) {
-                new Chat().handle(requestBody, out);
+                new Chat().handle(requestBody, out, Config.DB_PATH);
             } else if (requestPath.equals("/createLink")) {
-                new CreateLink().handle(requestBody, out);
+                new CreateLink().handle(requestBody, out, Config.DB_PATH);
+            }else if(requestPath.equals("/friend/nickname")) {
+                new UpdataFriendsNickname().handle(requestBody, out, Config.DB_PATH);
+            } else if (requestPath.equals("/group/creation")) {
+                new CreationGroup().handle(requestBody, out, Config.DB_PATH);
+            }else if(requestPath.equals("/group/dismiss")) {
+                new DismissGroup().handle(requestBody, out, Config.DB_PATH);
+            }else if(requestPath.equals("/group/name")) {
+                new UpdateGroupName().handle(requestBody, out, Config.DB_PATH);
+            }else if(requestPath.equals("/group/update/network")) {
+                new UpdateGroupNetwork().handle(requestBody, out, Config.DB_PATH);
+            }else if(requestPath.equals("/group/update/nickname")) {
+                new UpdateGroupNickname().handle(requestBody, out, Config.DB_PATH);
             } else {
                 ServiceUtils.sendErrorResponse(out, 404, "Not Found");
             }

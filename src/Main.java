@@ -1,8 +1,10 @@
 import java.io.IOException;
-import sever.ServiceInterfaces;
+import sever.user.UserInterfaces;
+import sever.file.FileInterfaces;
 
 public class Main {
     public static void main(String[] args) throws IOException {
-        ServiceInterfaces serviceInterfaces = new ServiceInterfaces(8080); 
+        UserInterfaces userInterfaces = new UserInterfaces(8080);
+        //FileInterfaces fileInterfaces = new FileInterfaces(8080);
     }
 }

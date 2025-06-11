@@ -69,7 +69,7 @@ public class Database {
                     "member_id TEXT NOT NULL," +
                     "role TEXT CHECK(role IN ('owner', 'admin', 'member')) DEFAULT 'member'," +
                     "join_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                    "last_seen TIMESTAMP," +
+                    "avatar_path_group TEXT," +
                     "nickname_in_group TEXT," +
                     "ip_address TEXT NOT NULL," +
                     "port INTEGER NOT NULL," +
