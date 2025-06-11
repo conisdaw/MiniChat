@@ -1,5 +1,7 @@
 package data;
 
+import core.Config;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -8,7 +10,7 @@ import java.sql.Statement;
 public class Database {
 
     public static void main(String[] args) {
-        initializeDatabase("DATA.db");
+        initializeDatabase(Config.DB_PATH);
     }
 
     public static void initializeDatabase(String dbPath) {

@@ -85,14 +85,15 @@ public class GroupSQL {
 
     // 添加群成员
     public static boolean addMember(String dbPath, String groupId, String memberId,
-                                    String ip, int port) {
-        String sql = "INSERT OR IGNORE INTO GroupMembers (group_id, member_id, ip_address, port) VALUES (?, ?, ?, ?)";
+                                    String ip, int port, String nickname) {
+        String sql = "INSERT OR IGNORE INTO GroupMembers (group_id, member_id, ip_address, port, nickname_in_group) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, groupId);
             pstmt.setString(2, memberId);
             pstmt.setString(3, ip);
             pstmt.setInt(4, port);
+            pstmt.setString(5, nickname);
             return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
             return false;

@@ -71,7 +71,7 @@ public class UserInterfaces {
             }else if(requestPath.equals("/group/name")) {
                 new UpdateGroupName().handle(requestBody, out, Config.DB_PATH);
             }else if(requestPath.equals("/group/update/network")) {
-                new UpdateGroupNetwork().handle(requestBody, out, Config.DB_PATH);
+                new UpdateGroupMembers().handle(requestBody, out, Config.DB_PATH);
             }else if(requestPath.equals("/group/update/nickname")) {
                 new UpdateGroupNickname().handle(requestBody, out, Config.DB_PATH);
             } else {
