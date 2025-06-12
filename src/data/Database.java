@@ -25,9 +25,10 @@ public class Database {
             // 创建用户信息表
             stmt.execute("CREATE TABLE IF NOT EXISTS UserInfo (" +
                     "user_id TEXT PRIMARY KEY," +
-                    "nickname TEXT NOT NULL DEFAULT 'User'," +
-                    "last_ip TEXT NOT NULL," +
-                    "last_port INTEGER NOT NULL," +
+                    "nickname TEXT NOT NULL," +
+                    "account TEXT NOT NULL," +
+                    "password TEXT NOT NULL," +
+                    "port INTEGER," +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
 
             // 创建好友表

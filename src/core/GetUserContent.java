@@ -1,19 +1,31 @@
 package core;
 
 import data.UserSQL;
-
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Enumeration;
+import java.util.List;
 
 public class GetUserContent {
     public static String personIP() throws SocketException {
         return getLocalIP();
     }
 
+    public static int getPort() {
+        String userId = UserID();
+        if (userId == null) {
+            return 5090;
+        }
+        return UserSQL.getUserPort(Config.DB_PATH, userId);
+    }
+
     public static String UserID() {
-        return UserSQL.getAllUserIds(Config.DB_PATH).getFirst();
+        List<String> userIds = UserSQL.getAllUserIds(Config.DB_PATH);
+        if (userIds == null || userIds.isEmpty()) {
+            return null;
+        }
+        return userIds.get(0);
     }
 
     public static int personPort() {
