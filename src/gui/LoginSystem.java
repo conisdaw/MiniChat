@@ -4,8 +4,6 @@ import core.Config;
 import core.FontUtil;
 import core.SetUserContent;
 import core.UserLogical;
-import data.UserSQL;
-import sever.user.UserInterfaces;
 
 import javax.swing.*;
 import javax.swing.text.AttributeSet;
@@ -15,7 +13,6 @@ import javax.swing.text.PlainDocument;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.io.IOException;
 
 public class LoginSystem extends JFrame {
     private CardLayout cardLayout;
@@ -99,7 +96,7 @@ public class LoginSystem extends JFrame {
             // 端口配置
             gbc.gridx = 0;
             gbc.gridy = 3;
-            JLabel portLabel = new JLabel("启动端口:");
+            JLabel portLabel = new JLabel("端口:");
             portLabel.setFont(customFont);
             add(portLabel, gbc);
 
@@ -144,7 +141,7 @@ public class LoginSystem extends JFrame {
                             return false;
                         }
                     }
-                    return true; // 允许部分输入（1-3位）
+                    return true;
                 }
             });
 

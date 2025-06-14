@@ -1,22 +1,34 @@
-package sever.user;
+package sever;
 
 import core.Config;
-import sever.ServiceUtils;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-
 public class UserInterfaces {
     private static final int MAX_REQUEST_SIZE = 8192;
+    private static final long MAX_FILE_SIZE = 10L * 1024 * 1024 * 1024; // 10GB
+    private ServerSocket serverSocket;
 
     public UserInterfaces(int port) throws IOException {
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Server started on port " + port);
-            while (true) {
+        serverSocket = new ServerSocket(port);
+        System.out.println("Server started on port " + port);
+        startServer();
+    }
+
+    private void startServer() {
+        while (true) {
+            try {
                 Socket clientSocket = serverSocket.accept();
                 new Thread(() -> handleClient(clientSocket)).start();
+            } catch (IOException e) {
+                if (serverSocket.isClosed()) {
+                    System.out.println("Server stopped.");
+                    break;
+                } else {
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -30,10 +42,7 @@ public class UserInterfaces {
             int bytesRead = in.read(buffer);
             if (bytesRead == -1) return;
 
-            // 解析请求内容
             String request = new String(buffer, 0, bytesRead);
-
-            // 解析请求行获取请求路径
             String[] requestLines = request.split("\r\n");
             if (requestLines.length == 0) {
                 ServiceUtils.sendErrorResponse(out, 400, "Invalid Request");
@@ -46,33 +55,41 @@ public class UserInterfaces {
                 return;
             }
 
-            String requestPath = requestParts[1]; // 获取请求路径
+            String requestPath = requestParts[1];
             System.out.println("Request Path: " + requestPath);
 
             String requestBody = "";
             if (request.contains("\r\n\r\n")) {
                 String[] parts = request.split("\r\n\r\n", 2);
                 if (parts.length > 1) {
-                    requestBody = parts[1].trim();  // 获取请求体
+                    requestBody = parts[1].trim();
                 }
             }
+
 
             // 根据路径分发处理逻辑
             if (requestPath.equals("/chat")) {
                 new Chat().handle(requestBody, out, Config.DB_PATH);
+            } else if (requestPath.equals("/file")) {
+                String savePath = ServiceUtils.extractStringField(requestBody, "savePath");
+                if (savePath.isEmpty()) {
+                    ServiceUtils.sendFileErrorResponse(out, 400, "缺少文件保存路径参数");
+                    return;
+                }
+                new FileTransfer().handle(in, out, savePath, MAX_FILE_SIZE, bytesRead - (request.indexOf("\r\n\r\n") + 4));
             } else if (requestPath.equals("/createLink")) {
                 new CreateLink().handle(requestBody, out, Config.DB_PATH);
-            }else if(requestPath.equals("/friend/nickname")) {
+            } else if (requestPath.equals("/friend/nickname")) {
                 new UpdataFriendsNickname().handle(requestBody, out, Config.DB_PATH);
             } else if (requestPath.equals("/group/creation")) {
                 new CreationGroup().handle(requestBody, out, Config.DB_PATH);
-            }else if(requestPath.equals("/group/dismiss")) {
+            } else if (requestPath.equals("/group/dismiss")) {
                 new DismissGroup().handle(requestBody, out, Config.DB_PATH);
-            }else if(requestPath.equals("/group/name")) {
+            } else if (requestPath.equals("/group/name")) {
                 new UpdateGroupName().handle(requestBody, out, Config.DB_PATH);
-            }else if(requestPath.equals("/group/update/network")) {
+            } else if (requestPath.equals("/group/update/network")) {
                 new UpdateGroupMembers().handle(requestBody, out, Config.DB_PATH);
-            }else if(requestPath.equals("/group/update/nickname")) {
+            } else if (requestPath.equals("/group/update/nickname")) {
                 new UpdateGroupNickname().handle(requestBody, out, Config.DB_PATH);
             } else {
                 ServiceUtils.sendErrorResponse(out, 404, "Not Found");
@@ -80,10 +97,19 @@ public class UserInterfaces {
 
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-
-
+    // 服务器停止方法
+    public void stop() throws IOException {
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            serverSocket.close();
+        }
+    }
 }
-

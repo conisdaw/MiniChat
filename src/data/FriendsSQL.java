@@ -2,7 +2,9 @@ package data;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class FriendsSQL {
     private static Connection getConnection(String dbPath) throws SQLException {
@@ -10,25 +12,81 @@ public class FriendsSQL {
     }
 
     // 通过friend_id获取全部信息
-    public static ResultSet getFriendByID(String dbPath, String friend_id) throws SQLException {
-        Connection conn = getConnection(dbPath);
-        PreparedStatement pstmt = conn.prepareStatement(
-                "SELECT * FROM Friends WHERE friend_id = ?");
-        pstmt.setString(1, friend_id);
-        return pstmt.executeQuery();
+    public static Map<String, String> getFriendByID(String dbPath, String friend_id) throws SQLException {
+        try (Connection conn = getConnection(dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(
+                     "SELECT * FROM Friends WHERE friend_id = ?")) {
+
+            pstmt.setString(1, friend_id);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, String> friendMap = new HashMap<>();
+                    ResultSetMetaData metaData = rs.getMetaData();
+                    int columnCount = metaData.getColumnCount();
+
+                    for (int i = 1; i <= columnCount; i++) {
+                        String columnName = metaData.getColumnName(i);
+                        friendMap.put(columnName, rs.getString(i));
+                    }
+                    return friendMap;
+                }
+            }
+        }
+        // 未找到记录时返回空Map
+        return new HashMap<>();
     }
 
-    // 获取全部friend_id 手动关闭结果集合
-    public static List<String> getAllFriendIDs(String dbPath) throws SQLException {
+    // 获取全部未拉黑的friend_id
+    public static List<Map<String, String>> getAllFriendIDs(String dbPath) throws SQLException {
+    try (Connection conn = getConnection(dbPath);
+             Statement stmt = conn.createStatement()) {
+
+            ResultSet rs = stmt.executeQuery(
+                "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = true"
+            );
+
+            List<Map<String, String>> friendsList = new ArrayList<>();
+            while (rs.next()) {
+                Map<String, String> friendInfo = new HashMap<>();
+                String friendId = rs.getString("friend_id");
+                String nickname = rs.getString("nickname");
+                String remark = rs.getString("remark");
+
+                String displayName = (remark != null && !remark.isEmpty())
+                                    ? remark : nickname;
+
+                friendInfo.put("friend_id", friendId);
+                friendInfo.put("name", displayName);
+                friendsList.add(friendInfo);
+            }
+            return friendsList;
+        }
+    }
+
+    // 获取全被被拉黑的friend_id
+    public static List<Map<String, String>> getAllBlockedFriendIDs(String dbPath) throws SQLException {
         try (Connection conn = getConnection(dbPath);
              Statement stmt = conn.createStatement()) {
 
-            ResultSet rs = stmt.executeQuery("SELECT friend_id FROM Friends");
-            List<String> ids = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = false"
+            );
+
+            List<Map<String, String>> friendsList = new ArrayList<>();
             while (rs.next()) {
-                ids.add(rs.getString("friend_id"));
+                Map<String, String> friendInfo = new HashMap<>();
+                String friendId = rs.getString("friend_id");
+                String nickname = rs.getString("nickname");
+                String remark = rs.getString("remark");
+
+                String displayName = (remark != null && !remark.isEmpty())
+                        ? remark : nickname;
+
+                friendInfo.put("friend_id", friendId);
+                friendInfo.put("name", displayName);
+                friendsList.add(friendInfo);
             }
-            return ids;
+            return friendsList;
         }
     }
 

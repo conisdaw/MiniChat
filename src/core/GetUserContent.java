@@ -8,8 +8,16 @@ import java.util.Enumeration;
 import java.util.List;
 
 public class GetUserContent {
-    public static String personIP() throws SocketException {
-        return getLocalIP();
+    public static String UserName() {
+        return UserSQL.getUserInfo(Config.DB_PATH, UserID()).get("nickname");
+    }
+
+    public static String personIP() {
+            try {
+                return getLocalIP();
+            } catch (SocketException e) {
+                throw new RuntimeException("Failed to get local IP", e);
+            }
     }
 
     public static int getPort() {

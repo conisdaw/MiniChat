@@ -3,10 +3,10 @@ package clients;
 public class JsonPayloadBuilder {
 
     // 点对点消息
-    public static String buildPeerMessage(boolean isGroup, String message, String ip, int port, String peerID) {
+    public static String buildPeerMessage(boolean isGroup, String message, String ip, int port, String peerID, String groupId) {
         return String.format(
-                "{\"isGroup\":%b,\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\"}",
-                isGroup, escapeJson(message), escapeJson(ip), port, escapeJson(peerID)
+                "{\"isGroup\":%b,\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\",\"groupId\":\"%s\"}",
+                isGroup, escapeJson(message), escapeJson(ip), port, escapeJson(peerID), escapeJson(groupId)
         );
     }
 
@@ -64,7 +64,7 @@ public class JsonPayloadBuilder {
     }
 
     // 处理JSON特殊字符转义
-    private static String escapeJson(String input) {
+    static String escapeJson(String input) {
         if (input == null) return "";
         StringBuilder sb = new StringBuilder();
         for (char c : input.toCharArray()) {

@@ -145,33 +145,39 @@ public class GroupSQL {
     }
 
     // 获取所有群组ID
-    public static List<String> getAllGroupIds(String dbPath) {
-        String sql = "SELECT group_id FROM Groups";
-        List<String> groupIds = new ArrayList<>();
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
-             PreparedStatement pstmt = conn.prepareStatement(sql);
-             ResultSet rs = pstmt.executeQuery()) {
-            while (rs.next()) {
-                groupIds.add(rs.getString("group_id"));
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+    public static List<Map<String, String>> getAllGroupInfo(String dbPath) {
+    String sql = "SELECT group_id, group_name FROM Groups";
+    List<Map<String, String>> list = new ArrayList<>();
+    try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+         PreparedStatement pstmt = conn.prepareStatement(sql);
+         ResultSet rs = pstmt.executeQuery()) {
+        while (rs.next()) {
+            Map<String, String> groupInfo = new HashMap<>();
+            groupInfo.put(
+                rs.getString("group_id"),
+                rs.getString("group_name")
+            );
+            list.add(groupInfo);
         }
-        return groupIds;
+    } catch (SQLException e) {
+        e.printStackTrace();
     }
+    return list;
+}
+
 
     // 获取指定群组所有成员的IP和端口
-    public static Map<String, Map<String, Object>> getGroupMembersNetwork(String dbPath, String groupId) {
+    public static Map<String, Map<String, String>> getGroupMembersNetwork(String dbPath, String groupId) {
         String sql = "SELECT member_id, ip_address, port FROM GroupMembers WHERE group_id = ?";
-        Map<String, Map<String, Object>> members = new HashMap<>();
+        Map<String, Map<String, String>> members = new HashMap<>();
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, groupId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    Map<String, Object> network = new HashMap<>();
+                    Map<String, String> network = new HashMap<>();
                     network.put("ip", rs.getString("ip_address"));
-                    network.put("port", rs.getInt("port"));
+                    network.put("port", "" + rs.getInt("port"));
                     members.put(rs.getString("member_id"), network);
                 }
             }

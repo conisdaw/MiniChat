@@ -1,6 +1,8 @@
 package data;
 
 import java.sql.*;
+import java.util.List;
+import java.util.ArrayList;
 
 public class ChatHistorySQL {
 
@@ -40,7 +42,9 @@ public class ChatHistorySQL {
     }
 
     // 读取聊天记录 群聊需传入groupID
-    public static ResultSet readChatHistory(String dbPath, boolean isGroup, String targetID) throws SQLException {
+    public static List<ChatMessage> readChatHistory(String dbPath, boolean isGroup, String targetID) throws SQLException {
+        List<ChatMessage> messages = new ArrayList<>();
+
         try (Connection conn = getConnection(dbPath)) {
             String sql;
             if (isGroup) {
@@ -49,9 +53,35 @@ public class ChatHistorySQL {
                 sql = "SELECT * FROM SingleChatHistory WHERE peer_id = ? ORDER BY timestamp";
             }
 
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setString(1, targetID);
-            return pstmt.executeQuery();
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, targetID);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        ChatMessage message = new ChatMessage();
+                        message.setChatType(isGroup ? "group" : "single");
+                        message.setMessageId(rs.getInt("message_id"));
+
+                        if (isGroup) {
+                            message.setGroupId(targetID);
+                            message.setSenderId(rs.getString("sender_id"));
+                        } else {
+                            message.setPeerId(targetID);
+                        }
+
+                        message.setMessageType(rs.getString("message_type"));
+                        message.setContent(isGroup ?
+                                rs.getString("content") :
+                                rs.getString("message"));
+                        message.setSent(rs.getBoolean("is_sent"));
+                        message.setIpAddress(rs.getString("ip_address"));
+                        message.setPort(rs.getInt("port"));
+                        message.setTimestamp(rs.getTimestamp("timestamp"));
+
+                        messages.add(message);
+                    }
+                }
+            }
         }
+        return messages;
     }
 }

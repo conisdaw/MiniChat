@@ -1,5 +1,6 @@
 package clients;
 
+import core.Config;
 import core.GetUserContent;
 import java.net.SocketException;
 
@@ -10,8 +11,8 @@ public class CreateLink {
                   "/createLink",
                        JsonPayloadBuilder.buildFriendRequest(
                                GetUserContent.UserID(),
-                               GetUserContent.personIP(),
-                               GetUserContent.personPort()
+                               Config.IP,
+                               Config.PORT
                        )
                 ),
                 severIP,

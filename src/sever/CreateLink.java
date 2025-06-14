@@ -1,7 +1,6 @@
-package sever.user;
+package sever;
 
 import data.FriendsSQL;
-import sever.ServiceUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;

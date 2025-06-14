@@ -81,7 +81,7 @@ public class UserSQL {
     }
 
     // 获取用户信息
-    public static Map<String, Object> getUserInfo(String dbPath, String userId) {
+    public static Map<String, String> getUserInfo(String dbPath, String userId) {
         String sql = "SELECT account, password, nickname FROM UserInfo WHERE user_id = ?";
 
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
@@ -90,7 +90,7 @@ public class UserSQL {
             ResultSet rs = pstmt.executeQuery();
 
             if (rs.next()) {
-                Map<String, Object> info = new HashMap<>();
+                Map<String, String> info = new HashMap<>();
                 info.put("account", rs.getString("account"));
                 info.put("password", rs.getString("password"));
                 info.put("nickname", rs.getString("nickname"));
