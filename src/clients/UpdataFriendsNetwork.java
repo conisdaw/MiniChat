@@ -1,13 +1,14 @@
 package clients;
 
-public class UpdataFriendsNickname {
-    public static void handle(String friendID, String nickname, String severIP, int severPort) {
+public class UpdataFriendsNetwork {
+    public static void handle(String friendID, String ip, int port, String severIP, int severPort) {
         ClientsUtils.sendRequest(
                 ClientsUtils.constructRequest(
                         "/friend/nickname",
-                        JsonPayloadBuilder.buildUpdateFriendNickname(
+                        JsonPayloadBuilder.buildUpdateFriendNetwork(
                                 friendID,
-                                nickname
+                                ip,
+                                port
                         )
                 ),
                 severIP,

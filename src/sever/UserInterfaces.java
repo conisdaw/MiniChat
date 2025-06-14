@@ -10,6 +10,7 @@ public class UserInterfaces {
     private static final int MAX_REQUEST_SIZE = 8192;
     private static final long MAX_FILE_SIZE = 10L * 1024 * 1024 * 1024; // 10GB
     private ServerSocket serverSocket;
+    private volatile boolean running = true; // 添加运行状态标志
 
     public UserInterfaces(int port) throws IOException {
         serverSocket = new ServerSocket(port);
@@ -18,14 +19,13 @@ public class UserInterfaces {
     }
 
     private void startServer() {
-        while (true) {
+        while (running) { // 使用运行状态标志
             try {
                 Socket clientSocket = serverSocket.accept();
                 new Thread(() -> handleClient(clientSocket)).start();
             } catch (IOException e) {
-                if (serverSocket.isClosed()) {
-                    System.out.println("Server stopped.");
-                    break;
+                if (!running) {
+                    System.out.println("Server stopped intentionally.");
                 } else {
                     e.printStackTrace();
                 }
@@ -65,7 +65,6 @@ public class UserInterfaces {
                     requestBody = parts[1].trim();
                 }
             }
-
 
             // 根据路径分发处理逻辑
             if (requestPath.equals("/chat")) {
@@ -108,6 +107,7 @@ public class UserInterfaces {
 
     // 服务器停止方法
     public void stop() throws IOException {
+        running = false;
         if (serverSocket != null && !serverSocket.isClosed()) {
             serverSocket.close();
         }

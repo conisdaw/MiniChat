@@ -4,6 +4,7 @@ import core.Config;
 import core.FontUtil;
 import core.SetUserContent;
 import core.UserLogical;
+import sever.UserInterfaces;
 
 import javax.swing.*;
 import javax.swing.text.AttributeSet;
@@ -13,6 +14,7 @@ import javax.swing.text.PlainDocument;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.io.IOException;
 
 public class LoginSystem extends JFrame {
     private CardLayout cardLayout;
@@ -219,9 +221,50 @@ public class LoginSystem extends JFrame {
                 }
 
                 if (UserLogical.login(account, password)) {
-                    JOptionPane.showMessageDialog(LoginSystem.this,
-                            "登录成功！启动端口: " + Config.PORT, "成功", JOptionPane.INFORMATION_MESSAGE);
-                    // 这里可以打开主界面
+                    // 隐藏登录界面
+                    LoginSystem.this.setVisible(false);
+
+                    // 登录成功后启动服务器和主界面
+                    SwingUtilities.invokeLater(() -> {
+                        ChatInterface chatInterface = new ChatInterface();
+                        chatInterface.setVisible(true);
+                    });
+
+
+                    new Thread(() -> {
+                        try {
+                            // 启动服务器
+                            UserInterfaces server = new UserInterfaces(Config.PORT);
+
+                            // 在EDT中打开主界面
+                            SwingUtilities.invokeLater(() -> {
+                                // 关闭登录窗口
+                                LoginSystem.this.dispose();
+
+                                // 创建并显示主界面
+                                ChatInterface chatInterface = new ChatInterface();
+                                chatInterface.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                                chatInterface.setVisible(true);
+
+                                // 设置关闭监听器来停止服务器
+                                chatInterface.addWindowListener(new java.awt.event.WindowAdapter() {
+                                    @Override
+                                    public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                                        try {
+                                            server.stop();
+                                        } catch (IOException ex) {
+                                            ex.printStackTrace();
+                                        }
+                                    }
+                                });
+                            });
+                        } catch (IOException ex) {
+                            JOptionPane.showMessageDialog(LoginSystem.this,
+                                    "服务器启动失败: " + ex.getMessage(),
+                                    "错误",
+                                    JOptionPane.ERROR_MESSAGE);
+                        }
+                    }).start();
                 } else {
                     JOptionPane.showMessageDialog(LoginSystem.this,
                             "账号或密码错误", "登录失败", JOptionPane.ERROR_MESSAGE);

@@ -87,6 +87,13 @@ public class ServiceUtils {
         out.write(response.getBytes());
     }
 
+    public static void sendSuccessResponse(OutputStream out, String message) throws IOException {
+        String response = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: application/json\r\n\r\n"
+                + "{\"status\":\"" + message + "\", \"message\":\"请求成功\"}";
+        out.write(response.getBytes());
+    }
+
 
      public static void sendErrorResponse(OutputStream out, int code, String message) throws IOException {
         String response = "HTTP/1.1 " + code + " Error\r\n"

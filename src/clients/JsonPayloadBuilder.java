@@ -3,10 +3,10 @@ package clients;
 public class JsonPayloadBuilder {
 
     // 点对点消息
-    public static String buildPeerMessage(boolean isGroup, String message, String ip, int port, String peerID, String groupId) {
+    public static String buildPeerMessage(boolean isGroup, String messageType ,String message, String ip, int port, String peerID, String groupId) {
         return String.format(
-                "{\"isGroup\":%b,\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\",\"groupId\":\"%s\"}",
-                isGroup, escapeJson(message), escapeJson(ip), port, escapeJson(peerID), escapeJson(groupId)
+                "{\"isGroup\":%b,\"messageType\":\"%s\",\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\",\"groupId\":\"%s\"}",
+                isGroup, escapeJson(messageType), escapeJson(message), escapeJson(ip), port, escapeJson(peerID), escapeJson(groupId)
         );
     }
 
@@ -60,6 +60,13 @@ public class JsonPayloadBuilder {
         return String.format(
                 "{\"friendID\":\"%s\",\"nickname\":\"%s\"}",
                 escapeJson(friendId), escapeJson(nickname)
+        );
+    }
+    // 更新好友网络
+    public static String buildUpdateFriendNetwork(String friendId, String ip, int port) {
+        return String.format(
+                "{\"friendId\":\"%s\",\"ip\":\"%s\",\"port\":%d}",
+                escapeJson(friendId), escapeJson(ip), port
         );
     }
 

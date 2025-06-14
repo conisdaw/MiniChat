@@ -5,7 +5,7 @@ import java.io.*;
 import java.net.Socket;
 
 public class FileSender {
-    public static void sendFile(String serverHost, int serverPort, String localFilePath, String serverRelativePath) throws IOException {
+    public static void handle(String serverHost, int serverPort, String localFilePath, String serverRelativePath) throws IOException {
         File file = new File(localFilePath);
         if (!file.exists()) {
             System.err.println("文件不存在: " + localFilePath);

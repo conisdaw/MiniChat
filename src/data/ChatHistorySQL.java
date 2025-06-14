@@ -3,6 +3,7 @@ package data;
 import java.sql.*;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
 
 public class ChatHistorySQL {
 
@@ -44,40 +45,57 @@ public class ChatHistorySQL {
     // 读取聊天记录 群聊需传入groupID
     public static List<ChatMessage> readChatHistory(String dbPath, boolean isGroup, String targetID) throws SQLException {
         List<ChatMessage> messages = new ArrayList<>();
-
         try (Connection conn = getConnection(dbPath)) {
-            String sql;
             if (isGroup) {
-                sql = "SELECT * FROM GroupMessages WHERE group_id = ? ORDER BY timestamp";
-            } else {
-                sql = "SELECT * FROM SingleChatHistory WHERE peer_id = ? ORDER BY timestamp";
-            }
+                Map<String, String> groupNicknames = GroupSQL.getGroupMemberNicknames(dbPath, targetID);
 
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, targetID);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    while (rs.next()) {
-                        ChatMessage message = new ChatMessage();
-                        message.setChatType(isGroup ? "group" : "single");
-                        message.setMessageId(rs.getInt("message_id"));
-
-                        if (isGroup) {
+                String sql = "SELECT * FROM GroupMessages WHERE group_id = ? ORDER BY timestamp";
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, targetID);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            ChatMessage message = new ChatMessage();
+                            message.setChatType("group");
+                            message.setMessageId(rs.getInt("message_id"));
                             message.setGroupId(targetID);
-                            message.setSenderId(rs.getString("sender_id"));
-                        } else {
-                            message.setPeerId(targetID);
+
+                            String senderId = rs.getString("sender_id");
+                            String nickname = groupNicknames.get(senderId);
+                            message.setSenderId(nickname != null ? nickname : senderId);
+
+                            message.setMessageType(rs.getString("message_type"));
+                            message.setContent(rs.getString("content"));
+                            message.setSent(rs.getBoolean("is_sent"));
+                            message.setIpAddress(rs.getString("ip_address"));
+                            message.setPort(rs.getInt("port"));
+                            message.setTimestamp(rs.getTimestamp("timestamp"));
+                            messages.add(message);
                         }
-
-                        message.setMessageType(rs.getString("message_type"));
-                        message.setContent(isGroup ?
-                                rs.getString("content") :
-                                rs.getString("message"));
-                        message.setSent(rs.getBoolean("is_sent"));
-                        message.setIpAddress(rs.getString("ip_address"));
-                        message.setPort(rs.getInt("port"));
-                        message.setTimestamp(rs.getTimestamp("timestamp"));
-
-                        messages.add(message);
+                    }
+                }
+            } else {
+                String sql = "SELECT * FROM SingleChatHistory WHERE peer_id = ? ORDER BY timestamp";
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, targetID);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            ChatMessage message = new ChatMessage();
+                            message.setChatType("single");
+                            message.setMessageId(rs.getInt("message_id"));
+                            message.setPeerId(targetID);
+                            if (rs.getBoolean("is_sent")) {
+                                message.setSenderId("我");
+                            } else {
+                                message.setSenderId(targetID);
+                            }
+                            message.setMessageType(rs.getString("message_type"));
+                            message.setContent(rs.getString("message"));
+                            message.setSent(rs.getBoolean("is_sent"));
+                            message.setIpAddress(rs.getString("ip_address"));
+                            message.setPort(rs.getInt("port"));
+                            message.setTimestamp(rs.getTimestamp("timestamp"));
+                            messages.add(message);
+                        }
                     }
                 }
             }

@@ -128,16 +128,50 @@ public class FriendsSQL {
     }
 
     // 更改拉黑状态
-    public static void toggleBlock(String dbPath, String friend_id, boolean isBlocked) throws SQLException {
+    public static void toggleBlockStatus(String dbPath, String friend_id) throws SQLException {
         try (Connection conn = getConnection(dbPath);
              PreparedStatement pstmt = conn.prepareStatement(
-                     "UPDATE Friends SET is_blocked=? WHERE friend_id=?")) {
-
-            pstmt.setBoolean(1, isBlocked);
-            pstmt.setString(2, friend_id);
+                     "UPDATE Friends SET is_blocked = NOT is_blocked WHERE friend_id=?")) {
+            pstmt.setString(1, friend_id);
             pstmt.executeUpdate();
         }
     }
+
+    // 删除好友
+    public static void deleteFriend(String dbPath, String friend_id) throws SQLException {
+        try (Connection conn = getConnection(dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(
+                     "DELETE FROM Friends WHERE friend_id = ?")) {
+
+            pstmt.setString(1, friend_id);
+            pstmt.executeUpdate();
+        }
+    }
+
+    // 获取所有好友的IP地址和端口号
+    public static List<Map<String, String>> getAllFriendIPsAndPorts(String dbPath) throws SQLException {
+        try (Connection conn = getConnection(dbPath);
+             Statement stmt = conn.createStatement()) {
+
+            ResultSet rs = stmt.executeQuery("SELECT ip_address, port FROM Friends");
+
+            List<Map<String, String>> resultList = new ArrayList<>();
+            while (rs.next()) {
+                Map<String, String> ipPortMap = new HashMap<>();
+                // 获取IP地址
+                String ip = rs.getString("ip_address");
+                // 将端口号从int转为String
+                String port = String.valueOf(rs.getInt("port"));
+
+                ipPortMap.put("ip", ip);
+                ipPortMap.put("port", port);
+                resultList.add(ipPortMap);
+            }
+            return resultList;
+        }
+    }
+
+
 
     // 字段更新方法
     private static void updateField(String dbPath, String friend_id, String field, String value) throws SQLException {

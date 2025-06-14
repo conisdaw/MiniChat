@@ -1,7 +1,7 @@
 package clients;
 
 public class UpdateGroupNickname {
-    public void handle(String groupId,String memberId,String nickname,String severIP, int severPort) {
+    public static void handle(String groupId, String memberId, String nickname, String severIP, int severPort) {
         ClientsUtils.sendRequest(
                 ClientsUtils.constructRequest(
                         "/group/update/nickname",

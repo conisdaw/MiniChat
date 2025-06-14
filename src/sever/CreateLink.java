@@ -1,5 +1,6 @@
 package sever;
 
+import core.Config;
 import data.FriendsSQL;
 
 import java.io.IOException;
@@ -12,6 +13,6 @@ public class CreateLink {
         String ip = ServiceUtils.extractStringField(jsonBody, "ip");
         int port = ServiceUtils.extractIntField(jsonBody, "port");
         FriendsSQL.addFriend(pathDB, friend_id, ip, port);
-        ServiceUtils.sendSuccessResponse(out);
+        ServiceUtils.sendSuccessResponse(out, Config.USER_ID + "," + Config.USER_NAME);
     }
 }

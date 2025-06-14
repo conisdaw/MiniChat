@@ -8,9 +8,6 @@ import java.util.Random;
 import java.util.UUID;
 
 public class CreationGroup {
-    public static void main(String[] args) throws SocketException {
-        handle("test", "1,2,3,4", "id1,id2,id3,id4", "11,22,33,44","111,222,333,444");
-    }
 
     public static void handle(String groupName, String nicknames, String userIds, String ips, String ports) throws SocketException {
         Random random = new Random();

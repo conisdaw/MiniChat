@@ -81,6 +81,49 @@ public class GroupSQL {
         }
     }
 
+    // 检查用户是否为群主
+    public static boolean isOwner(String dbPath, String groupId, String memberId) {
+        String sql = "SELECT role FROM GroupMembers WHERE group_id = ? AND member_id = ?";
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, groupId);
+            pstmt.setString(2, memberId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    String role = rs.getString("role");
+                    return "owner".equalsIgnoreCase(role);
+                }
+                return false;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+
+    // 获取指定群组所有成员的IP和端口
+    public static List<String[]> getGroupMemberNetworks(String dbPath, String groupId) {
+        String sql = "SELECT ip_address, port FROM GroupMembers WHERE group_id = ?";
+        List<String[]> networks = new ArrayList<>();
+
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, groupId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String ip = rs.getString("ip_address");
+                    String port = String.valueOf(rs.getInt("port"));  // 将端口转为String
+                    networks.add(new String[]{ip, port});
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return networks;
+    }
 
 
     // 添加群成员
@@ -211,24 +254,22 @@ public class GroupSQL {
 
     // 获取指定群组所有成员的群昵称
     public static Map<String, String> getGroupMemberNicknames(String dbPath, String groupId) {
-        String sql = "SELECT member_id, nickname_in_group FROM GroupMembers WHERE group_id = ?";
         Map<String, String> nicknames = new HashMap<>();
+        String sql = "SELECT member_id, nickname_in_group FROM GroupMembers WHERE group_id = ?";
+
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, groupId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    String memberId = rs.getString("member_id");
-                    String nickname = rs.getString("nickname_in_group");
-                    nicknames.put(memberId, nickname != null ? nickname : "");
-                }
+            ResultSet rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                nicknames.put(rs.getString("member_id"), rs.getString("nickname_in_group"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return nicknames;
     }
-
 
     // 获取群组名称
     public static String getGroupName(String dbPath, String groupId) {
