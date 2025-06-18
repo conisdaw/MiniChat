@@ -31,7 +31,7 @@ public class GetUserContent {
     public static String UserID() {
         List<String> userIds = UserSQL.getAllUserIds(Config.DB_PATH);
         if (userIds == null || userIds.isEmpty()) {
-            return null;
+            return "新用户";
         }
         return userIds.get(0);
     }

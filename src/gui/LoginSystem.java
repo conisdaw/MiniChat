@@ -1,10 +1,7 @@
 package gui;
 
-import core.Config;
-import core.FontUtil;
-import core.SetUserContent;
-import core.UserLogical;
-import sever.UserInterfaces;
+import core.*;
+import data.UnreadMessages;
 
 import javax.swing.*;
 import javax.swing.text.AttributeSet;
@@ -14,7 +11,7 @@ import javax.swing.text.PlainDocument;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.io.IOException;
+import java.io.File;
 
 public class LoginSystem extends JFrame {
     private CardLayout cardLayout;
@@ -23,6 +20,7 @@ public class LoginSystem extends JFrame {
     private RegisterPanel registerPanel;
     private UserLogical UserLogical;
     private Font customFont;
+    private JTextField ipField;
 
     public LoginSystem() {
         super("登录");
@@ -95,9 +93,36 @@ public class LoginSystem extends JFrame {
             passwordField.setFont(customFont);
             add(passwordField, gbc);
 
-            // 端口配置
+            // IP地址
             gbc.gridx = 0;
             gbc.gridy = 3;
+            JLabel ipLabel = new JLabel("IP地址:");
+            ipLabel.setFont(customFont);
+            add(ipLabel, gbc);
+
+            gbc.gridx = 1;
+            ipField = new JTextField(20);
+            ipField.setFont(customFont);
+            String defaultIP = GetUserContent.personIP();
+            ipField.setText(defaultIP != null ? defaultIP : "127.0.0.1");
+            ipField.addFocusListener(new FocusAdapter() {
+                @Override
+                public void focusLost(FocusEvent e) {
+                    String ip = ipField.getText().trim();
+                    if (!ip.isEmpty()) {
+                        Config.IP = ip;
+                    } else {
+                        JOptionPane.showMessageDialog(LoginSystem.this,
+                                "IP地址不能为空", "输入错误", JOptionPane.WARNING_MESSAGE);
+                        ipField.setText(Config.IP);
+                    }
+                }
+            });
+            add(ipField, gbc);
+
+            // 端口配置
+            gbc.gridx = 0;
+            gbc.gridy = 4;
             JLabel portLabel = new JLabel("端口:");
             portLabel.setFont(customFont);
             add(portLabel, gbc);
@@ -147,10 +172,18 @@ public class LoginSystem extends JFrame {
                 }
             });
 
-            // 添加焦点监听器，保存端口配置
+            // 保存IP和端口配置
             portField.addFocusListener(new FocusAdapter() {
                 @Override
                 public void focusLost(FocusEvent e) {
+                    String ip = ipField.getText().trim();
+                    if (ip.isEmpty()) {
+                        JOptionPane.showMessageDialog(LoginSystem.this,
+                                "请先输入有效的IP地址", "输入错误", JOptionPane.WARNING_MESSAGE);
+                        ipField.requestFocus();
+                        return;
+                    }
+
                     String portText = portField.getText().trim();
                     if (portText.length() != 4) {
                         JOptionPane.showMessageDialog(LoginSystem.this,
@@ -180,7 +213,7 @@ public class LoginSystem extends JFrame {
 
             // 登录按钮
             gbc.gridx = 0;
-            gbc.gridy = 4;
+            gbc.gridy = 5;
             gbc.gridwidth = 2;
             JButton loginButton = new JButton("登录");
             loginButton.setBackground(new Color(70, 130, 180));
@@ -188,6 +221,14 @@ public class LoginSystem extends JFrame {
             loginButton.setFont(customFont.deriveFont(Font.BOLD, 14f));
             loginButton.setPreferredSize(new Dimension(120, 35));
             loginButton.addActionListener(e -> {
+                String ip = ipField.getText().trim();
+                if (ip.isEmpty()) {
+                    JOptionPane.showMessageDialog(LoginSystem.this,
+                            "IP地址不能为空", "输入错误", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                Config.IP = ip;
+
                 String account = accountField.getText().trim();
                 String password = new String(passwordField.getPassword());
 
@@ -221,50 +262,52 @@ public class LoginSystem extends JFrame {
                 }
 
                 if (UserLogical.login(account, password)) {
+                    Config.USER_ID = GetUserContent.UserID();
+                    Config.USER_NAME = GetUserContent.UserName();
+
+                    File baseDir = new File(Config.FILE_BASE_DIR);
+                    if (!baseDir.exists()) {
+                        boolean created = baseDir.mkdirs();
+                        if (!created) {
+                            JOptionPane.showMessageDialog(LoginSystem.this,
+                                    "无法创建基础文件目录", "系统错误", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+
+                    // 执行网络重置
+                    new SwingWorker<Void, Void>() {
+                        @Override
+                        protected Void doInBackground() {
+                            ChatCore.resetNetwork(Config.IP + ":" + Config.PORT);
+                            return null;
+                        }
+
+                        @Override
+                        protected void done() {
+                            try {
+                                get();
+                            } catch (Exception e) {
+                                JOptionPane.showMessageDialog(LoginSystem.this,
+                                        "网络重置失败: " + e.getMessage(),
+                                        "网络错误",
+                                        JOptionPane.ERROR_MESSAGE
+                                );
+                            }
+                        }
+                    }.execute();
+
+                    UnreadMessages.loadFromDatabase();
+
                     // 隐藏登录界面
                     LoginSystem.this.setVisible(false);
 
-                    // 登录成功后启动服务器和主界面
+                    // 登录成功后启动主界面
                     SwingUtilities.invokeLater(() -> {
                         ChatInterface chatInterface = new ChatInterface();
+                        chatInterface.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
                         chatInterface.setVisible(true);
                     });
 
-
-                    new Thread(() -> {
-                        try {
-                            // 启动服务器
-                            UserInterfaces server = new UserInterfaces(Config.PORT);
-
-                            // 在EDT中打开主界面
-                            SwingUtilities.invokeLater(() -> {
-                                // 关闭登录窗口
-                                LoginSystem.this.dispose();
-
-                                // 创建并显示主界面
-                                ChatInterface chatInterface = new ChatInterface();
-                                chatInterface.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-                                chatInterface.setVisible(true);
-
-                                // 设置关闭监听器来停止服务器
-                                chatInterface.addWindowListener(new java.awt.event.WindowAdapter() {
-                                    @Override
-                                    public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                                        try {
-                                            server.stop();
-                                        } catch (IOException ex) {
-                                            ex.printStackTrace();
-                                        }
-                                    }
-                                });
-                            });
-                        } catch (IOException ex) {
-                            JOptionPane.showMessageDialog(LoginSystem.this,
-                                    "服务器启动失败: " + ex.getMessage(),
-                                    "错误",
-                                    JOptionPane.ERROR_MESSAGE);
-                        }
-                    }).start();
                 } else {
                     JOptionPane.showMessageDialog(LoginSystem.this,
                             "账号或密码错误", "登录失败", JOptionPane.ERROR_MESSAGE);
@@ -273,7 +316,7 @@ public class LoginSystem extends JFrame {
             add(loginButton, gbc);
 
             // 注册链接
-            gbc.gridy = 5;
+            gbc.gridy = 6;
             JButton registerButton = new JButton("没有账号？立即注册");
             registerButton.setBorderPainted(false);
             registerButton.setContentAreaFilled(false);

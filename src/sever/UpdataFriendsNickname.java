@@ -1,6 +1,7 @@
 package sever;
 
 import data.FriendsSQL;
+import data.ListIsUpdated;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -11,6 +12,7 @@ public class UpdataFriendsNickname {
         String friend_id = ServiceUtils.extractStringField(jsonBody, "friendID");
         String nickname = ServiceUtils.extractStringField(jsonBody, "nickname");
         FriendsSQL.updateNickname(dbPath, friend_id, nickname);
+        ListIsUpdated.friendNotNull();
         ServiceUtils.sendSuccessResponse(out);
     }
 }

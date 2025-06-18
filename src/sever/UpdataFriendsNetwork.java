@@ -18,4 +18,5 @@ public class UpdataFriendsNetwork {
             throw new RuntimeException(e);
         }
     }
+
 }

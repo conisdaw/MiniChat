@@ -1,10 +1,13 @@
 package sever;
 
 import data.GroupSQL;
+import data.ListIsUpdated;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 public class CreationGroup {
     public void handle(String jsonBody, OutputStream out, String dbPath) throws IOException, SQLException {
@@ -20,6 +23,7 @@ public class CreationGroup {
 
         for (int i = 1; i < network[0].length; i++) GroupSQL.addMember(dbPath, groupId, network[2][i], network[0][i], Integer.parseInt(network[1][i]), network[3][i]);
 
+        ListIsUpdated.groupNotNull();
         ServiceUtils.sendSuccessResponse(out);
     }
 }

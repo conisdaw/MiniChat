@@ -27,10 +27,10 @@ public class CreationGroup {
                             JsonPayloadBuilder.buildCreateGroup(
                                     groupID,
                                     groupName,
-                                    Config.PORT + "," + ports,
-                                    Config.IP+ "," + ips,
+                                    ports,
+                                    ips,
                                     userIds,
-                                    Config.USER_NAME + ","  + nicknames
+                                    nicknames
                             )
                     ),
                     network[0][i],

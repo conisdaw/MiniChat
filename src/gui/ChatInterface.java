@@ -5,6 +5,9 @@ import core.Config;
 import core.FontUtil;
 import data.ChatMessage;
 import data.FriendsSQL;
+import data.ListIsUpdated;
+import data.UnreadMessages;
+import sever.UserInterfaces;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -18,12 +21,18 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.HTMLDocument;
 
@@ -44,24 +53,39 @@ public class ChatInterface extends JFrame {
     private Color panelColor = new Color(250, 250, 255);
     private Color buttonColor = new Color(70, 130, 180);
     private Color buttonHoverColor = new Color(100, 149, 237);
+    private Timer unreadCheckTimer;
     private String currentChatId;
     private boolean currentIsGroup;
     private Map<String, String> friendIdMap = new HashMap<>();
     private Map<String, String> groupIdMap = new HashMap<>();
     private Map<String, String> currentGroupMemberMap;
     private Map<String, String> blockedIdMap = new HashMap<>();
+    private Map<String, Color> originalFriendColors = new HashMap<>();
+    private Map<String, Color> originalGroupColors = new HashMap<>();
+    private Map<String, Boolean> unreadFriendStatus = new ConcurrentHashMap<>();
+    private Map<String, Boolean> unreadGroupStatus = new ConcurrentHashMap<>();
+    private UserInterfaces server;
 
 
     public ChatInterface() {
         super("聊天应用");
         setSize(1000, 700);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setLocationRelativeTo(null);
+
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                dispose();
+            }
+        });
 
         // 加载自定义字体
         customFont = FontUtil.loadCustomFont(14f);
 
         initUI();
+        startUnreadCheckTimer();
+        startServer(Config.PORT);
     }
 
     private void initUI() {
@@ -83,28 +107,63 @@ public class ChatInterface extends JFrame {
     }
 
     private void loadFriendList() {
-        friendsModel.clear();
-        friendIdMap.clear();
-        List<Map<String, String>> friends = ChatCore.getFriendList();
-        for (Map<String, String> friend : friends) {
-            String name = friend.get("name"); // 正确键名
-            String friendId = friend.get("friend_id");
-            friendsModel.addElement(name);
-            friendIdMap.put(name, friendId);
-        }
+        new SwingWorker<List<Map<String, String>>, Void>() {
+            @Override
+            protected List<Map<String, String>> doInBackground() {
+                return ChatCore.getFriendList();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<Map<String, String>> friends = get();
+                    friendsModel.clear();
+                    friendIdMap.clear();
+                    for (Map<String, String> friend : friends) {
+                        String name = friend.get("name");
+                        String friendId = friend.get("friend_id");
+                        friendsModel.addElement(name);
+                        friendIdMap.put(name, friendId);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ChatInterface.this,
+                            "加载好友列表失败: " + e.getMessage(),
+                            "错误", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     private void loadGroupList() {
-        groupsModel.clear();
-        groupIdMap.clear();
-        List<Map<String, String>> groups = ChatCore.getGroupList();
-        for (Map<String, String> group : groups) {
-            String name = group.values().iterator().next();
-            String groupId = group.keySet().iterator().next();
-            groupsModel.addElement(name);
-            groupIdMap.put(name, groupId);
-        }
+        new SwingWorker<List<Map<String, String>>, Void>() {
+            @Override
+            protected List<Map<String, String>> doInBackground() {
+                return ChatCore.getGroupList();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<Map<String, String>> groups = get();
+                    groupsModel.clear();
+                    groupIdMap.clear();
+                    for (Map<String, String> group : groups) {
+                        String name = group.values().iterator().next();
+                        String groupId = group.keySet().iterator().next();
+                        groupsModel.addElement(name);
+                        groupIdMap.put(name, groupId);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ChatInterface.this,
+                            "加载群组列表失败: " + e.getMessage(),
+                            "错误", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
+
 
     private void loadBlockedList() {
         blockedModel.clear();
@@ -123,13 +182,14 @@ public class ChatInterface extends JFrame {
         JPanel myInfoTab = new JPanel(new BorderLayout());
         myInfoTab.setBackground(panelColor);
 
-        // 主面板 - 使用垂直布局
-        JPanel mainPanel = new JPanel();
-        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+        // 主面板
+        JPanel mainPanel = new JPanel(new GridBagLayout());
         mainPanel.setBackground(panelColor);
         mainPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        JPanel horizontalPanel = new JPanel(new BorderLayout(5, 0)); // 水平间距5px
-        horizontalPanel.setBackground(panelColor);
+
+        GridBagConstraints gbcMain = new GridBagConstraints();
+        gbcMain.insets = new Insets(0, 0, 10, 0);
+        gbcMain.anchor = GridBagConstraints.CENTER;
 
         // 头像面板
         JPanel avatarPanel = new JPanel();
@@ -137,32 +197,30 @@ public class ChatInterface extends JFrame {
         avatarPanel.setBorder(null);
 
         // 加载头像
-        ImageIcon originalIcon = null;
+        ImageIcon originalIcon;
         try {
             originalIcon = new ImageIcon(getClass().getResource(Config.IMAGE_PATH + "/avatar.jpg"));
         } catch (Exception e) {
-            // 如果头像加载失败，使用默认图标
-            try {
-                originalIcon = new ImageIcon(getClass().getResource(Config.IMAGE_PATH + "/default_avatar.png"));
-            } catch (Exception ex) {
-                // 如果默认头像也没有，创建一个空图标
-                originalIcon = new ImageIcon();
-            }
+            originalIcon = new ImageIcon();
         }
 
-        // 增大头像大小到100x100
         Image scaledImage = originalIcon.getImage().getScaledInstance(100, 100, Image.SCALE_SMOOTH);
         JLabel avatarLabel = new JLabel(new ImageIcon(scaledImage));
         avatarLabel.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 220), 2));
         avatarPanel.add(avatarLabel);
 
-        // 信息面板 - 紧挨着头像
+        // 添加头像面板到主面板
+        gbcMain.gridx = 0;
+        gbcMain.gridy = 0;
+        mainPanel.add(avatarPanel, gbcMain);
+
+        // 信息面板
         JPanel infoPanel = new JPanel(new GridBagLayout());
         infoPanel.setBackground(panelColor);
         infoPanel.setBorder(null);
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(0, 10, 0, 10); // 减少内部间距为0
+        gbc.insets = new Insets(0, 10, 5, 10);
         gbc.anchor = GridBagConstraints.WEST;
 
         JLabel nicknameLabel = new JLabel("我的昵称:");
@@ -177,12 +235,8 @@ public class ChatInterface extends JFrame {
         gbc.gridy = 0;
         infoPanel.add(currentNicknameLabel, gbc);
 
-        // 将头像和信息面板添加到水平面板
-        horizontalPanel.add(avatarPanel, BorderLayout.WEST);
-        horizontalPanel.add(infoPanel, BorderLayout.CENTER);
-
         JButton changeNicknameButton = new JButton("修改昵称");
-        styleButton(changeNicknameButton, true);
+        styleButton(changeNicknameButton, false);
         changeNicknameButton.addActionListener(e -> {
             String newNickname = JOptionPane.showInputDialog(
                     this,
@@ -192,9 +246,30 @@ public class ChatInterface extends JFrame {
             );
 
             if (newNickname != null && !newNickname.trim().isEmpty()) {
-                ChatCore.updataNickname(newNickname.trim());
                 currentNicknameLabel.setText(newNickname.trim());
-                Config.USER_NAME = newNickname.trim();
+                new SwingWorker<Void, Void>() {
+                    @Override
+                    protected Void doInBackground() throws Exception {
+                        ChatCore.updataNickname(newNickname.trim());
+                        return null;
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            get();
+                            SwingUtilities.invokeLater(() -> {
+                                currentNicknameLabel.setText(newNickname.trim());
+                                Config.USER_NAME = newNickname.trim();
+                            });
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            JOptionPane.showMessageDialog(ChatInterface.this,
+                                    "昵称更新失败: " + ex.getMessage(),
+                                    "错误", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }.execute();
             }
         });
 
@@ -204,13 +279,14 @@ public class ChatInterface extends JFrame {
         gbc.anchor = GridBagConstraints.CENTER;
         infoPanel.add(changeNicknameButton, gbc);
 
-        // 添加所有组件到主面板（直接添加，不添加额外面板）
-        mainPanel.add(avatarPanel);
-        mainPanel.add(infoPanel);
+        // 添加信息面板到主面板
+        gbcMain.gridy = 1;
+        mainPanel.add(infoPanel, gbcMain);
 
         myInfoTab.add(mainPanel, BorderLayout.CENTER);
         return myInfoTab;
     }
+
 
     private JPanel createLeftPanel() {
         JPanel leftPanel = new JPanel(new BorderLayout());
@@ -224,15 +300,15 @@ public class ChatInterface extends JFrame {
 
         // 好友选项卡
         JPanel friendsTab = createFriendsTab();
-        tabbedPane.addTab("好友", friendsTab);
+        tabbedPane.addTab("好友名单", friendsTab);
 
         // 群聊选项卡
         JPanel groupsTab = createGroupsTab();
-        tabbedPane.addTab("群聊", groupsTab);
+        tabbedPane.addTab("群聊名单", groupsTab);
 
         // 被拉黑选项卡
         JPanel blockedTab = createBlockedTab();
-        tabbedPane.addTab("被拉黑", blockedTab);
+        tabbedPane.addTab("拉黑名单", blockedTab);
 
         // 我的信息选项卡
         JPanel myInfoTab = createMyInfoTab();
@@ -302,7 +378,6 @@ public class ChatInterface extends JFrame {
         JPanel friendsTab = new JPanel(new BorderLayout());
         friendsTab.setBackground(panelColor);
 
-        // 好友列表标题
         JPanel friendsHeader = new JPanel(new BorderLayout());
         friendsHeader.setBackground(panelColor);
         friendsHeader.setBorder(new EmptyBorder(5, 0, 10, 0));
@@ -322,7 +397,7 @@ public class ChatInterface extends JFrame {
         friendsList.setBackground(panelColor);
         friendsList.setCellRenderer(new ContactListCellRenderer());
 
-        // 添加右键菜单（好友设置按钮）
+        // 添加右键菜单
         JPopupMenu friendPopupMenu = new JPopupMenu();
 
         // 添加备注选项
@@ -340,7 +415,7 @@ public class ChatInterface extends JFrame {
                     );
 
                     if (newRemark != null && !newRemark.trim().isEmpty()) {
-                        // 调用核心方法更新备注
+                        // 更新备注
                         ChatCore.UpdataFriendsRemark(newRemark.trim(), friendId);
 
                         // 更新UI
@@ -372,7 +447,7 @@ public class ChatInterface extends JFrame {
             if (selected != null) {
                 String friendId = friendIdMap.get(selected);
                 if (friendId != null) {
-                    // 调用核心方法删除好友
+                    // 删除好友
                     ChatCore.deleteFriend(friendId);
 
                     friendsModel.removeElement(selected);
@@ -391,6 +466,8 @@ public class ChatInterface extends JFrame {
             if (!e.getValueIsAdjusting()) {
                 String selectedFriend = friendsList.getSelectedValue();
                 if (selectedFriend != null) {
+                    String friendId = friendIdMap.get(selectedFriend);
+                    clearFriendHighlight(friendId);
                     currentChatLabel.setText("与 " + selectedFriend + " 聊天中");
                     loadChatHistory(selectedFriend, false);
                 }
@@ -434,7 +511,7 @@ public class ChatInterface extends JFrame {
             if (selectedGroup != null) {
                 String groupId = groupIdMap.get(selectedGroup);
                 if (groupId != null) {
-                    showAddMemberDialog(groupId);
+                    new Thread(() -> showAddMemberDialog(groupId)).start();
                 }
             }
         });
@@ -455,12 +532,13 @@ public class ChatInterface extends JFrame {
                 if (newName != null && !newName.trim().isEmpty()) {
                     String groupId = groupIdMap.get(selectedGroup);
                     if (groupId != null) {
-                        // 调用核心方法更新群名称
-                        ChatCore.updateGroupName(groupId, newName.trim());
-
-                        // 更新UI
-                        int index = groupsList.getSelectedIndex();
-                        groupsModel.setElementAt(newName.trim(), index);
+                        new SwingWorker<Void, Void>() {
+                            @Override
+                            protected Void doInBackground() {
+                                ChatCore.updateGroupNickname(groupId, Config.USER_ID, newName.trim());
+                                return null;
+                            }
+                        }.execute();
                     }
                 }
             }
@@ -481,7 +559,7 @@ public class ChatInterface extends JFrame {
                 if (newNick != null && !newNick.trim().isEmpty()) {
                     String groupId = groupIdMap.get(selectedGroup);
                     if (groupId != null) {
-                        // 调用核心方法更新群昵称
+                        // 更新群昵称
                         ChatCore.updateGroupNickname(groupId, Config.USER_ID, newNick.trim());
                     }
                 }
@@ -503,11 +581,12 @@ public class ChatInterface extends JFrame {
                 if (confirm == JOptionPane.YES_OPTION) {
                     String groupId = groupIdMap.get(selectedGroup);
                     if (groupId != null) {
-                        // 调用核心方法解散群
+                        // 解散群
                         if (ChatCore.deleteGroups(groupId)) {
                             groupsModel.removeElement(selectedGroup);
                             groupIdMap.remove(selectedGroup);
                         }
+                        loadGroupList();
                     }
                 }
             }
@@ -525,6 +604,8 @@ public class ChatInterface extends JFrame {
             if (!e.getValueIsAdjusting()) {
                 String selectedGroup = groupsList.getSelectedValue();
                 if (selectedGroup != null) {
+                    String groupId = groupIdMap.get(selectedGroup);
+                    clearGroupHighlight(groupId);
                     currentChatLabel.setText("群聊: " + selectedGroup);
                     loadChatHistory(selectedGroup, true);
                 }
@@ -608,7 +689,7 @@ public class ChatInterface extends JFrame {
         chatHistoryArea.setEditorKit(new HTMLEditorKit());
         chatHistoryArea.setDocument(new HTMLDocument());
         chatHistoryArea.setEditable(false);
-        //chatHistoryArea.setCursor(null); // 移除光标
+        chatHistoryArea.setCursor(null);
         chatHistoryArea.setFont(customFont);
         chatHistoryArea.setBackground(Color.WHITE);
         chatHistoryArea.setBorder(BorderFactory.createCompoundBorder(
@@ -705,14 +786,14 @@ public class ChatInterface extends JFrame {
 
     // 处理超链接点击事件
     private void handleHyperlinkClick(String path) {
-        File file = new File(Config.FILE_BASE_DIR + path);
+        Path filePath = Paths.get(Config.FILE_BASE_DIR, path);
+        File file = filePath.toFile();
+
         if (file.exists()) {
             try {
-                // 图片文件显示缩略图
                 if (path.toLowerCase().matches(".*\\.(jpg|jpeg|png|gif|bmp)$")) {
                     showImageThumbnail(file);
                 } else {
-                    // 其他文件用系统默认方式打开
                     Desktop.getDesktop().open(file);
                 }
             } catch (IOException ex) {
@@ -728,6 +809,7 @@ public class ChatInterface extends JFrame {
                     JOptionPane.WARNING_MESSAGE);
         }
     }
+
 
     // 显示图片缩略图
     private void showImageThumbnail(File imageFile) {
@@ -804,39 +886,103 @@ public class ChatInterface extends JFrame {
 
     private void showAddMemberDialog(String groupId) {
         JDialog dialog = new JDialog(this, "添加成员到群聊", true);
-        // 对话框布局代码（与创建群聊类似）
+        dialog.setSize(400, 500);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout());
+
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
+        contentPanel.setBackground(panelColor);
+
+        // 添加多选提示
+        JLabel hintLabel = new JLabel("按住 Ctrl 或 Shift 键多选");
+        hintLabel.setFont(customFont.deriveFont(Font.ITALIC, 12f));
+        hintLabel.setForeground(new Color(100, 100, 100));
+        hintLabel.setBorder(new EmptyBorder(0, 0, 5, 0));
 
         // 好友选择列表
         JList<String> selectionList = new JList<>(friendsModel);
         selectionList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        selectionList.setFont(customFont);
+        selectionList.setBackground(panelColor);
+        selectionList.setCellRenderer(new ContactListCellRenderer());
+
+        JScrollPane scrollPane = new JScrollPane(selectionList);
+
+        // 创建包含提示和列表的面板
+        JPanel listPanel = new JPanel(new BorderLayout());
+        listPanel.add(hintLabel, BorderLayout.NORTH);
+        listPanel.add(scrollPane, BorderLayout.CENTER);
+
+        contentPanel.add(listPanel, BorderLayout.CENTER);
+
+        // 按钮面板
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(panelColor);
 
         JButton addButton = new JButton("添加");
+        styleButton(addButton, true);
         addButton.addActionListener(evt -> {
             List<String> selectedFriends = selectionList.getSelectedValuesList();
-            for (String friendName : selectedFriends) {
-                String friendId = friendIdMap.get(friendName);
-                if (friendId != null) {
+            if (selectedFriends.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "请至少选择一位好友", "提示", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() {
+                    for (String friendName : selectedFriends) {
+                        String friendId = friendIdMap.get(friendName);
+                        if (friendId != null) {
+                            try {
+                                Map<String, String> friendInfo = FriendsSQL.getFriendByID(Config.DB_PATH, friendId);
+                                String ip = friendInfo.get("ip_address");
+                                int port = Integer.parseInt(friendInfo.get("port"));
+                                ChatCore.updateGroupMembers(
+                                        groupId,
+                                        friendId,
+                                        friendName,
+                                        ip,
+                                        port
+                                );
+                            } catch (SQLException ex) {
+                                ex.printStackTrace();
+                            }
+                        }
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
                     try {
-                        Map<String, String> friendInfo = FriendsSQL.getFriendByID(Config.DB_PATH, friendId);
-                        String ip = friendInfo.get("ip_address");
-                        int port = Integer.parseInt(friendInfo.get("port"));
-                        // 调用核心方法添加成员
-                        ChatCore.updateGroupMembers(
-                                groupId,
-                                friendId,
-                                friendName,
-                                ip,
-                                port
-                        );
-                    } catch (SQLException ex) {
+                        get();
+                        JOptionPane.showMessageDialog(dialog,
+                                "成员添加成功！",
+                                "成功",
+                                JOptionPane.INFORMATION_MESSAGE);
+                        dialog.dispose();
+                    } catch (Exception ex) {
                         ex.printStackTrace();
+                        JOptionPane.showMessageDialog(dialog,
+                                "添加成员失败: " + ex.getMessage(),
+                                "错误",
+                                JOptionPane.ERROR_MESSAGE);
                     }
                 }
-            }
-            dialog.dispose();
+            }.execute();
         });
 
-        // 显示对话框
+        JButton cancelButton = new JButton("取消");
+        styleButton(cancelButton, true);
+        cancelButton.addActionListener(e -> dialog.dispose());
+
+        buttonPanel.add(cancelButton);
+        buttonPanel.add(addButton);
+
+        dialog.add(contentPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
         dialog.setVisible(true);
     }
 
@@ -859,24 +1005,30 @@ public class ChatInterface extends JFrame {
     }
 
     private void loadChatHistory(String target, boolean isGroup) {
-        chatHistoryArea.setText("");
+        chatHistoryArea.setText("加载中...");
         currentChatId = getTargetId(target, isGroup);
         currentIsGroup = isGroup;
 
-        if (isGroup) {
-            currentGroupMemberMap = ChatCore.getGroupMemberName(currentChatId);
-            if (currentGroupMemberMap == null) {
-                currentGroupMemberMap = new HashMap<>();
+        new SwingWorker<List<ChatMessage>, Void>() {
+            @Override
+            protected List<ChatMessage> doInBackground() {
+                return ChatCore.getChatHistory(currentChatId, currentIsGroup);
             }
-            if (!currentGroupMemberMap.containsKey(Config.USER_ID)) {
-                currentGroupMemberMap.put(Config.USER_ID, "我");
-            }
-        }
 
-        List<ChatMessage> history = ChatCore.getChatHistory(currentChatId, currentIsGroup);
-        for (ChatMessage message : history) {
-            appendMessageToHistory(message);
-        }
+            @Override
+            protected void done() {
+                try {
+                    chatHistoryArea.setText("");
+                    List<ChatMessage> history = get();
+                    for (ChatMessage message : history) {
+                        appendMessageToHistory(message);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    chatHistoryArea.setText("加载失败");
+                }
+            }
+        }.execute();
     }
 
     // 根据名称获取目标ID
@@ -910,21 +1062,22 @@ public class ChatInterface extends JFrame {
 //        }
 //    }
 
-    private ChatMessage createMessage(String type, String content, boolean isSelf, String sender, String time) {
-        ChatMessage msg = new ChatMessage();
-        msg.setMessageType(type);
-        msg.setContent(content);
-        msg.setSenderId(isSelf ? "我" : sender);
-        msg.setTimestamp(java.sql.Timestamp.valueOf(time));
-        return msg;
-    }
+//    private ChatMessage createMessage(String type, String content, boolean isSelf, String sender, String time) {
+//        ChatMessage msg = new ChatMessage();
+//        msg.setMessageType(type);
+//        msg.setContent(content);
+//        msg.setSenderId(isSelf ? "我" : sender);
+//        msg.setTimestamp(java.sql.Timestamp.valueOf(time));
+//        return msg;
+//    }
 
     private void appendMessageToHistory(ChatMessage message) {
         String timeStr = message.getTimestamp().toLocalDateTime()
                 .format(DateTimeFormatter.ofPattern("HH:mm"));
 
         String sender;
-        if (message.getSenderId().equals(Config.USER_ID)) {
+        boolean isSelf = message.isSent();
+        if (isSelf) {
             sender = "我";
         } else if (currentIsGroup) {
             if (currentGroupMemberMap != null && currentGroupMemberMap.containsKey(message.getSenderId())) {
@@ -937,15 +1090,12 @@ public class ChatInterface extends JFrame {
         }
 
         String content;
-        String filePath = message.getContent();
-
         switch (message.getMessageType()) {
             case "image":
             case "file":
-                // 文件路径不需要额外转义
                 String fileName = new File(message.getContent()).getName();
                 content = String.format(
-                        "<a href='%s' style='color:blue;text-decoration:underline;'>[%s] %s</a>",
+                        "<a href='%s' style='color:#B0C4DE;text-decoration:underline;'>[%s] %s</a>",
                         message.getContent(),
                         message.getMessageType().equals("image") ? "图片" : "文件",
                         fileName
@@ -956,10 +1106,60 @@ public class ChatInterface extends JFrame {
                         .replace("\n", "<br/>");
         }
 
-        // 构建HTML格式的消息
+        // 获取字体信息
+        String fontFamily = customFont.getFamily();
+        int fontSize = customFont.getSize();
+
+        String bubbleStyle;
+        if (isSelf) {
+            bubbleStyle = "background:#FFFFFF;" +
+                    "color:#87CEEB;" +
+                    "display:inline-block;" +
+                    "padding:8px 12px;" +
+                    "margin:5px 0;" +
+                    "max-width:70%;" +
+                    "word-wrap:break-word;" +
+                    "border-radius:12px;";
+        } else {
+            bubbleStyle = "background:#FFFFFF;" +
+                    "color:#40E0D0;" +
+                    "display:inline-block;" +
+                    "padding:8px 12px;" +
+                    "margin:5px 0;" +
+                    "max-width:70%;" +
+                    "word-wrap:break-word;" +
+                    "border-radius:12px;";
+        }
+
+        // 构建HTML消息
+        String header;
+        if (isSelf) {
+            header = String.format(
+                    "<span style='font-size:0.85em; color:#666; padding-right:8px;'>%s</span>" +
+                            "<span style='font-weight:500;'>%s</span>",
+                    timeStr, sender
+            );
+        } else {
+            header = String.format(
+                    "<span style='font-weight:500;'>%s</span>" +
+                            "<span style='font-size:0.85em; color:#666; padding-left:8px;'>%s</span>",
+                    sender, timeStr
+            );
+        }
+
+        // 构建完整消息
         String formattedMessage = String.format(
-                "<div style='margin-bottom:10px;'>[%s] <b>%s</b>: %s</div>",
-                timeStr, sender, content
+                "<div style='margin-bottom:8px; %s'>" +
+                        "<div style='font-family:%s; font-size:%dpx;'>" +
+                        "<div>%s</div>" +
+                        "<div style='%s'>%s</div>" +
+                        "</div>" +
+                        "</div>",
+                isSelf ? "text-align:right;" : "text-align:left;",
+                fontFamily, fontSize,
+                header,
+                bubbleStyle,
+                content
         );
 
         try {
@@ -983,21 +1183,42 @@ public class ChatInterface extends JFrame {
 
     private void sendMessage() {
         String message = messageInputArea.getText().trim();
-        if (!message.isEmpty() && currentChatId != null && !currentChatId.isEmpty()) {
-            ChatCore.setChatHistory(
-                    currentIsGroup,
-                    currentIsGroup ? currentChatId : null, // 群ID
-                    currentIsGroup ? Config.USER_ID : currentChatId, // 成员ID或好友ID
-                    message
-            );
+        if (!message.isEmpty() && currentChatId != null) {
+            // 先显示本地消息
             ChatMessage newMessage = new ChatMessage();
             newMessage.setMessageType("text");
             newMessage.setContent(message);
             newMessage.setSenderId("我");
-            newMessage.setTimestamp(java.sql.Timestamp.valueOf(LocalDateTime.now()));
-
+            newMessage.setSent(true);
+            newMessage.setTimestamp(Timestamp.valueOf(LocalDateTime.now()));
             appendMessageToHistory(newMessage);
             messageInputArea.setText("");
+
+            // 后台发送
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() {
+                    ChatCore.setChatHistory(
+                            currentIsGroup,
+                            currentIsGroup ? currentChatId : null,
+                            currentIsGroup ? Config.USER_ID : currentChatId,
+                            message
+                    );
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        get();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        JOptionPane.showMessageDialog(ChatInterface.this,
+                                "发送失败: " + e.getMessage(),
+                                "错误", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
         }
     }
 
@@ -1020,50 +1241,88 @@ public class ChatInterface extends JFrame {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setDialogTitle("选择图片");
         fileChooser.setFileFilter(new FileNameExtensionFilter("图片文件", "jpg", "jpeg", "png", "gif"));
-        
+
         int result = fileChooser.showOpenDialog(this);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
+            String selectedFilePath = selectedFile.getAbsolutePath();
+
             if (currentChatId != null && !currentChatId.isEmpty()) {
-                ChatCore.setImage(
-                        currentIsGroup,
-                        currentIsGroup ? currentChatId : null,
-                        currentIsGroup ? Config.USER_ID : currentChatId,
-                        selectedFile.getAbsolutePath()
-                );
+                new SwingWorker<String, Void>() {
+                    @Override
+                    protected String doInBackground() throws Exception {
+                        return ChatCore.setImage(
+                            currentIsGroup,
+                            currentIsGroup ? currentChatId : null,
+                            currentIsGroup ? Config.USER_ID : currentChatId,
+                            selectedFilePath
+                        );
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            String finalPath = get();
+                            ChatMessage imageMessage = new ChatMessage();
+                            imageMessage.setMessageType("image");
+                            imageMessage.setContent(finalPath);
+                            imageMessage.setSenderId("我");
+                            imageMessage.setSent(true);
+                            imageMessage.setTimestamp(Timestamp.valueOf(LocalDateTime.now()));
+                            appendMessageToHistory(imageMessage);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            JOptionPane.showMessageDialog(ChatInterface.this,
+                                "图片发送失败: " + e.getMessage(),
+                                "错误", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }.execute();
             }
-            ChatMessage imageMessage = new ChatMessage();
-            imageMessage.setMessageType("image");
-            imageMessage.setContent(selectedFile.getName());
-            imageMessage.setSenderId("我");
-            imageMessage.setTimestamp(java.sql.Timestamp.valueOf(LocalDateTime.now()));
-            
-            appendMessageToHistory(imageMessage);
         }
     }
 
     private void selectFile() {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setDialogTitle("选择文件");
-        
+
         int result = fileChooser.showOpenDialog(this);
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
+            String selectedFilePath = selectedFile.getAbsolutePath();
+
             if (currentChatId != null && !currentChatId.isEmpty()) {
-                ChatCore.setFile(
-                        currentIsGroup,
-                        currentIsGroup ? currentChatId : null,
-                        currentIsGroup ? Config.USER_ID : currentChatId,
-                        selectedFile.getAbsolutePath()
-                );
+                new SwingWorker<String, Void>() {
+                    @Override
+                    protected String doInBackground() throws Exception {
+                        return ChatCore.setFile(
+                            currentIsGroup,
+                            currentIsGroup ? currentChatId : null,
+                            currentIsGroup ? Config.USER_ID : currentChatId,
+                            selectedFilePath
+                        );
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            String finalPath = get();
+                            ChatMessage fileMessage = new ChatMessage();
+                            fileMessage.setMessageType("file");
+                            fileMessage.setContent(finalPath);
+                            fileMessage.setSenderId("我");
+                            fileMessage.setSent(true);
+                            fileMessage.setTimestamp(Timestamp.valueOf(LocalDateTime.now()));
+                            appendMessageToHistory(fileMessage);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            JOptionPane.showMessageDialog(ChatInterface.this,
+                                "文件发送失败: " + e.getMessage(),
+                                "错误", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                }.execute();
             }
-            ChatMessage fileMessage = new ChatMessage();
-            fileMessage.setMessageType("file");
-            fileMessage.setContent(selectedFile.getName());
-            fileMessage.setSenderId("我");
-            fileMessage.setTimestamp(java.sql.Timestamp.valueOf(LocalDateTime.now()));
-            
-            appendMessageToHistory(fileMessage);
         }
     }
 
@@ -1175,6 +1434,9 @@ public class ChatInterface extends JFrame {
                     saveButton.setEnabled(false);
                     saveButton.setText("连接中...");
 
+                    dialog.setVisible(false);
+                    restartServer(port);
+
                     new SwingWorker<Void, Void>() {
                         @Override
                         protected Void doInBackground() throws Exception {
@@ -1223,39 +1485,57 @@ public class ChatInterface extends JFrame {
     }
 
     private void showAddFriendDialog() {
-        String network = JOptionPane.showInputDialog(
-                this,
-                "输入对方的网络地址（格式：IP:端口）",
-                "添加好友",
-                JOptionPane.PLAIN_MESSAGE
-        );
+    String network = JOptionPane.showInputDialog(
+            this,
+            "输入对方的网络地址（格式：IP:端口）",
+            "添加好友",
+            JOptionPane.PLAIN_MESSAGE
+    );
 
-        if (network != null && !network.trim().isEmpty()) {
-            // 验证格式
-            if (!network.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+")) {
-                JOptionPane.showMessageDialog(this,
-                        "格式错误！正确格式：192.168.1.100:8080",
-                        "输入错误",
-                        JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            // 调用核心方法添加好友
-            boolean success = ChatCore.addFriend(network.trim());
-            if (success) {
-                JOptionPane.showMessageDialog(this,
-                        "好友请求已发送",
-                        "添加好友",
-                        JOptionPane.INFORMATION_MESSAGE);
-                loadFriendList();
-            } else {
-                JOptionPane.showMessageDialog(this,
-                        "添加失败，请检查网络地址",
-                        "添加失败",
-                        JOptionPane.ERROR_MESSAGE);
-            }
+    if (network != null && !network.trim().isEmpty()) {
+        // 验证格式
+        if (!network.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+")) {
+            JOptionPane.showMessageDialog(this,
+                    "格式错误！正确格式：192.168.1.100:8080",
+                    "输入错误",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
         }
+
+        // 创建SwingWorker执行后台添加操作
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() {
+                return ChatCore.addFriend(network.trim());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    if (get()) {
+                        JOptionPane.showMessageDialog(ChatInterface.this,
+                                "好友请求已发送",
+                                "添加好友",
+                                JOptionPane.INFORMATION_MESSAGE);
+                        loadFriendList(); // 刷新好友列表
+                    } else {
+                        JOptionPane.showMessageDialog(ChatInterface.this,
+                                "添加失败，请检查网络地址",
+                                "添加失败",
+                                JOptionPane.ERROR_MESSAGE);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ChatInterface.this,
+                            "添加好友时出错: " + e.getMessage(),
+                            "错误",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
+}
+
 
     private void showCreateGroupDialog() {
         // 创建多选好友对话框
@@ -1274,9 +1554,9 @@ public class ChatInterface extends JFrame {
         hintLabel.setForeground(new Color(100, 100, 100));
         hintLabel.setBorder(new EmptyBorder(0, 0, 5, 0));
 
-        // 好友选择列表（多选模式）
+        // 好友选择列表
         JList<String> selectionList = new JList<>(friendsModel);
-        selectionList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION); // 启用多选
+        selectionList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         selectionList.setFont(customFont);
         selectionList.setBackground(panelColor);
         selectionList.setCellRenderer(new ContactListCellRenderer());
@@ -1317,13 +1597,56 @@ public class ChatInterface extends JFrame {
                 return;
             }
 
-            List<String> selected = selectionList.getSelectedValuesList();
-            if (selected.isEmpty()) {
+            List<String> selectedNames = selectionList.getSelectedValuesList();
+            if (selectedNames.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog, "请至少选择一位好友", "输入错误", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
-            groupsModel.addElement(groupName);
+            // 收集选中的好友ID
+            List<String> selectedFriendIds = new ArrayList<>();
+            for (String friendName : selectedNames) {
+                String friendId = friendIdMap.get(friendName);
+                if (friendId != null) {
+                    selectedFriendIds.add(friendId);
+                }
+            }
+
+            // 收集好友信息
+            String[] friendInfo = ChatCore.collectSelectedFriendInfo(selectedFriendIds);
+
+            // 创建群组
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() {
+                    ChatCore.creationGroup(
+                            groupName,
+                            friendInfo[0],  // nicknames
+                            friendInfo[1],  // userIds
+                            friendInfo[2],  // ips
+                            friendInfo[3]   // ports
+                    );
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        get(); // 等待完成
+                        loadGroupList(); // 刷新群组列表
+                        groupsList.repaint();
+                        JOptionPane.showMessageDialog(ChatInterface.this,
+                                "群组创建成功！",
+                                "成功", JOptionPane.INFORMATION_MESSAGE);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        JOptionPane.showMessageDialog(dialog,
+                                "创建群组失败: " + ex.getMessage(),
+                                "错误", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
+
             dialog.dispose();
         });
 
@@ -1337,6 +1660,185 @@ public class ChatInterface extends JFrame {
         dialog.add(contentPanel, BorderLayout.CENTER);
         dialog.add(buttonPanel, BorderLayout.SOUTH);
         dialog.setVisible(true);
+    }
+
+/*    private String getFriendId(String nickname) {
+        // 根据昵称查找好友ID
+        List<Map<String, String>> friends = ChatCore.getFriendList();
+        for (Map<String, String> friend : friends) {
+            if (nickname.equals(friend.get("nickname"))) {
+                return friend.get("friend_id");
+            }
+        }
+        return "";
+    }
+
+    private String getGroupId(String groupName) {
+        // 根据群名查找群ID
+        List<Map<String, String>> groups = ChatCore.getGroupList();
+        for (Map<String, String> group : groups) {
+            if (groupName.equals(group.get("group_name"))) {
+                return group.get("group_id");
+            }
+        }
+        return "";
+    }*/
+
+
+    private void startUnreadCheckTimer() {
+        unreadCheckTimer = new Timer(1000, e -> checkUnreadMessages());
+        unreadCheckTimer.start();
+    }
+
+    private void checkUnreadMessages() {
+        if(ListIsUpdated.friendIsNull()) loadFriendList();
+        if (ListIsUpdated.groupIsNull()) loadGroupList();
+        if (!UnreadMessages.hasUnread()) return;
+
+        // 处理好友未读消息
+        for (String friendId : UnreadMessages.getFriendsWithUnread()) {
+            // 如果是当前聊天好友
+            if (friendId.equals(currentChatId) && !currentIsGroup) {
+                CopyOnWriteArrayList<ChatMessage> messages = UnreadMessages.getAndClearFriendMessages(friendId);
+                for (ChatMessage msg : messages) {
+                    appendMessageToHistory(msg);
+                }
+                unreadFriendStatus.put(friendId, false);
+            }
+            else {
+                unreadFriendStatus.put(friendId, true);
+                highlightFriend(friendId);
+            }
+        }
+
+        // 处理群组未读消息
+        for (String groupId : UnreadMessages.getGroupsWithUnread()) {
+            // 如果是当前聊天群组
+            if (groupId.equals(currentChatId) && currentIsGroup) {
+                CopyOnWriteArrayList<ChatMessage> messages = UnreadMessages.getAndClearGroupMessages(groupId);
+                for (ChatMessage msg : messages) {
+                    appendMessageToHistory(msg);
+                }
+                unreadGroupStatus.put(groupId, false);
+            }
+            else {
+                // 标记为有未读消息
+                unreadGroupStatus.put(groupId, true);
+                highlightGroup(groupId);
+            }
+        }
+    }
+
+    // 高亮好友
+    private void highlightFriend(String friendId) {
+        for (int i = 0; i < friendsModel.size(); i++) {
+            String friendName = friendsModel.get(i);
+            String id = friendIdMap.get(friendName);
+            if (id.equals(friendId)) {
+                JLabel label = (JLabel) friendsList.getCellRenderer()
+                        .getListCellRendererComponent(friendsList, friendName, i, false, false);
+
+                // 保存原始颜色
+                if (!originalFriendColors.containsKey(friendId)) {
+                    originalFriendColors.put(friendId, label.getForeground());
+                }
+
+                // 设置橙色
+                label.setForeground(Color.ORANGE);
+                friendsList.repaint();
+                break;
+            }
+        }
+    }
+
+    // 高亮群组
+    private void highlightGroup(String groupId) {
+        for (int i = 0; i < groupsModel.size(); i++) {
+            String groupName = groupsModel.get(i);
+            String id = groupIdMap.get(groupName);
+            if (id.equals(groupId)) {
+                JLabel label = (JLabel) groupsList.getCellRenderer()
+                        .getListCellRendererComponent(groupsList, groupName, i, false, false);
+
+                // 保存原始颜色
+                if (!originalGroupColors.containsKey(groupId)) {
+                    originalGroupColors.put(groupId, label.getForeground());
+                }
+
+                // 设置橙色
+                label.setForeground(Color.ORANGE);
+                groupsList.repaint();
+                break;
+            }
+        }
+    }
+
+    // 清除好友高亮
+    private void clearFriendHighlight(String friendId) {
+        UnreadMessages.getAndClearFriendMessages(friendId);
+        unreadFriendStatus.put(friendId, false);
+        friendsList.repaint();
+    }
+
+    // 清除群组高亮
+    private void clearGroupHighlight(String groupId) {
+        UnreadMessages.getAndClearGroupMessages(groupId);
+        unreadGroupStatus.put(groupId, false);
+        groupsList.repaint();
+    }
+
+    // 启动服务器
+    private void startServer(int port) {
+        new Thread(() -> {
+            try {
+                server = new UserInterfaces(port);
+                System.out.println("服务器启动成功，端口: " + port);
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "服务器启动失败: " + ex.getMessage(),
+                        "错误", JOptionPane.ERROR_MESSAGE);
+            }
+        }).start();
+    }
+
+    // 重启服务器
+    private void restartServer(int port) {
+        if (server != null) {
+            try {
+                server.stop();
+                System.out.println("服务器已停止");
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+        startServer(port);
+    }
+
+    @Override
+    public void dispose() {
+        // 停止定时器
+        if (unreadCheckTimer != null) {
+            unreadCheckTimer.stop();
+        }
+
+        // 停止服务器
+        if (server != null) {
+            try {
+                server.stop();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+
+        // 保存未读消息
+        try {
+            UnreadMessages.saveToDatabase();
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("保存未读消息失败: " + e.getMessage());
+        }
+        super.dispose();
+        System.exit(0);
     }
 
     // 自定义列表渲染器
@@ -1359,65 +1861,37 @@ public class ChatInterface extends JFrame {
                 label.setForeground(new Color(50, 50, 50));
             } else {
                 label.setBackground(panelColor);
-                label.setForeground(new Color(80, 80, 80));
+                // 检查是否有未读消息
+                if (list == friendsList) {
+                    String friendName = displayValue;
+                    String friendId = friendIdMap.get(friendName);
+                    if (friendId != null && unreadFriendStatus.getOrDefault(friendId, false)) {
+                        label.setForeground(Color.ORANGE);
+                    } else {
+                        label.setForeground(new Color(80, 80, 80));
+                    }
+                } else if (list == groupsList) {
+                    String groupName = displayValue;
+                    String groupId = groupIdMap.get(groupName);
+                    if (groupId != null && unreadGroupStatus.getOrDefault(groupId, false)) {
+                        label.setForeground(Color.ORANGE);
+                    } else {
+                        label.setForeground(new Color(80, 80, 80));
+                    }
+                } else if (list == blockedList) {
+                    label.setForeground(new Color(150, 150, 150));
+                } else {
+                    label.setForeground(new Color(80, 80, 80));
+                }
             }
 
             // 为被拉黑的好友设置特殊样式
             if (list == blockedList && value != null) {
-                String cleanValue = value.toString().replace(" (已拉黑)", "");
                 label.setForeground(new Color(150, 150, 150));
-            }
-
-            // 设置客户端属性
-            if (value != null) {
-                if (list == friendsList) {
-                    label.putClientProperty("id", getFriendId(value.toString()));
-                } else if (list == groupsList) {
-                    label.putClientProperty("id", getGroupId(value.toString()));
-                } else if (list == blockedList) {
-                    String friendName = value.toString().replace(" (已拉黑)", "");
-                    label.putClientProperty("id", getFriendId(friendName));
-                }
             }
 
             return label;
         }
     }
 
-
-    private String getFriendId(String nickname) {
-        // 根据昵称查找好友ID
-        List<Map<String, String>> friends = ChatCore.getFriendList();
-        for (Map<String, String> friend : friends) {
-            if (nickname.equals(friend.get("nickname"))) {
-                return friend.get("friend_id");
-            }
-        }
-        return "";
-    }
-
-    private String getGroupId(String groupName) {
-        // 根据群名查找群ID
-        List<Map<String, String>> groups = ChatCore.getGroupList();
-        for (Map<String, String> group : groups) {
-            if (groupName.equals(group.get("group_name"))) {
-                return group.get("group_id");
-            }
-        }
-        return "";
-    }
-
-
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            
-            ChatInterface chatInterface = new ChatInterface();
-            chatInterface.setVisible(true);
-        });
-    }
 }

@@ -1,11 +1,13 @@
 package clients;
 
+import core.Config;
+
 public class JsonPayloadBuilder {
 
     // 点对点消息
     public static String buildPeerMessage(boolean isGroup, String messageType ,String message, String ip, int port, String peerID, String groupId) {
         return String.format(
-                "{\"isGroup\":%b,\"messageType\":\"%s\",\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\",\"groupId\":\"%s\"}",
+                "{\"isGroup\":%b,\"messageType\":\"%s\",\"message\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"peerID\":\"%s\",\"groupID\":\"%s\"}",
                 isGroup, escapeJson(messageType), escapeJson(message), escapeJson(ip), port, escapeJson(peerID), escapeJson(groupId)
         );
     }
@@ -13,8 +15,8 @@ public class JsonPayloadBuilder {
     // 好友请求
     public static String buildFriendRequest(String friendId, String ip, int port) {
         return String.format(
-                "{\"friend_id\":\"%s\",\"ip\":\"%s\",\"port\":%d}",
-                escapeJson(friendId), escapeJson(ip), port
+                "{\"friend_id\":\"%s\",\"nickname\":\"%s\",\"ip\":\"%s\",\"port\":%d}",
+                escapeJson(friendId),escapeJson(Config.USER_NAME), escapeJson(ip), port
         );
     }
 

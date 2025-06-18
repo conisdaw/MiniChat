@@ -36,7 +36,6 @@ public class UserSQL {
     // 更新用户昵称
     public static boolean updateNickname(String dbPath, String userId, String newNickname) {
         String sql = "UPDATE UserInfo SET nickname = ? WHERE user_id = ?";
-
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, newNickname);

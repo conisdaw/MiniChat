@@ -42,7 +42,7 @@ public class FriendsSQL {
              Statement stmt = conn.createStatement()) {
 
             ResultSet rs = stmt.executeQuery(
-                "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = true"
+                "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = false"
             );
 
             List<Map<String, String>> friendsList = new ArrayList<>();
@@ -69,7 +69,7 @@ public class FriendsSQL {
              Statement stmt = conn.createStatement()) {
 
             ResultSet rs = stmt.executeQuery(
-                    "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = false"
+                    "SELECT friend_id, nickname, remark FROM Friends WHERE is_blocked = true"
             );
 
             List<Map<String, String>> friendsList = new ArrayList<>();
@@ -88,6 +88,22 @@ public class FriendsSQL {
             }
             return friendsList;
         }
+    }
+
+    // 检查对应的ID是否被拉黑
+    public static boolean isFriendUnblocked(String dbPath, String friend_id) throws SQLException {
+        try (Connection conn = getConnection(dbPath);
+             PreparedStatement pstmt = conn.prepareStatement(
+                     "SELECT is_blocked FROM Friends WHERE friend_id = ?")) {
+
+            pstmt.setString(1, friend_id);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return !rs.getBoolean("is_blocked");
+                }
+            }
+        }
+        return false;
     }
 
     // 新增好友

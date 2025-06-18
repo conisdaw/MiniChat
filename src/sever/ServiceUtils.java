@@ -25,18 +25,18 @@ public class ServiceUtils {
     }
 
     // 文件传输成功响应
-    public static void sendFileSuccessResponse(OutputStream out, String filePath) throws IOException {
-        String response = "HTTP/1.1 200 OK\r\n"
-                + "Content-Type: application/json\r\n\r\n"
-                + "{\"status\":\"success\", \"message\":\"文件传输成功\", \"path\":\"" + filePath + "\"}";
+    public static void sendFileSuccessResponse(OutputStream out, String path) throws IOException {
+        String response = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: application/json\r\n\r\n" +
+                "{\"status\":\"success\",\"path\":\"" + path + "\"}";
         out.write(response.getBytes());
     }
 
     // 文件传输错误响应
     public static void sendFileErrorResponse(OutputStream out, int code, String message) throws IOException {
-        String response = "HTTP/1.1 " + code + " Error\r\n"
-                + "Content-Type: application/json\r\n\r\n"
-                + "{\"status\":\"error\", \"code\":" + code + ", \"message\":\"" + message + "\"}";
+        String response = "HTTP/1.1 " + code + " Error\r\n" +
+                "Content-Type: application/json\r\n\r\n" +
+                "{\"status\":\"error\",\"code\":" + code + ",\"message\":\"" + message + "\"}";
         out.write(response.getBytes());
     }
 

@@ -1,6 +1,7 @@
 package sever;
 
 import data.GroupSQL;
+import data.ListIsUpdated;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,6 +13,7 @@ public class UpdateGroupMembers {
         String ip = ServiceUtils.extractStringField(jsonBody, "ip");
         int port = ServiceUtils.extractIntField(jsonBody, "port");
         GroupSQL.updateMemberNetwork(dbPath, groupId, memberId, ip, port);
+        ListIsUpdated.groupNotNull();
         ServiceUtils.sendSuccessResponse(out);
     }
 }

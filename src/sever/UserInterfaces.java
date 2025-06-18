@@ -5,12 +5,17 @@ import core.Config;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.json.JSONObject;
 
 public class UserInterfaces {
     private static final int MAX_REQUEST_SIZE = 8192;
     private static final long MAX_FILE_SIZE = 10L * 1024 * 1024 * 1024; // 10GB
     private ServerSocket serverSocket;
-    private volatile boolean running = true; // 添加运行状态标志
+    private volatile boolean running = true;
+    private static final Map<String, Handler> HANDLER_MAP = new HashMap<>();
 
     public UserInterfaces(int port) throws IOException {
         serverSocket = new ServerSocket(port);
@@ -66,32 +71,17 @@ public class UserInterfaces {
                 }
             }
 
-            // 根据路径分发处理逻辑
-            if (requestPath.equals("/chat")) {
-                new Chat().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/file")) {
-                String savePath = ServiceUtils.extractStringField(requestBody, "savePath");
-                if (savePath.isEmpty()) {
-                    ServiceUtils.sendFileErrorResponse(out, 400, "缺少文件保存路径参数");
-                    return;
-                }
-                new FileTransfer().handle(in, out, savePath, MAX_FILE_SIZE, bytesRead - (request.indexOf("\r\n\r\n") + 4));
-            } else if (requestPath.equals("/createLink")) {
-                new CreateLink().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/friend/nickname")) {
-                new UpdataFriendsNickname().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/group/creation")) {
-                new CreationGroup().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/group/dismiss")) {
-                new DismissGroup().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/group/name")) {
-                new UpdateGroupName().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/group/update/network")) {
-                new UpdateGroupMembers().handle(requestBody, out, Config.DB_PATH);
-            } else if (requestPath.equals("/group/update/nickname")) {
-                new UpdateGroupNickname().handle(requestBody, out, Config.DB_PATH);
-            } else {
-                ServiceUtils.sendErrorResponse(out, 404, "Not Found");
+            switch (requestPath) {
+                case "/file":
+                    handleFileRequest(requestLines, in, out);
+                    break;
+                default:
+                    Handler handler = HANDLER_MAP.get(requestPath);
+                    if (handler != null) {
+                        handler.handle(requestBody, out);
+                    } else {
+                        ServiceUtils.sendErrorResponse(out, 404, "Not Found");
+                    }
             }
 
         } catch (Exception e) {
@@ -104,6 +94,79 @@ public class UserInterfaces {
             }
         }
     }
+
+    // 文件请求单独处理
+    private void handleFileRequest(String[] requestLines, InputStream in, OutputStream out) throws IOException {
+        int jsonLength = -1;
+        for (String line : requestLines) {
+            if (line.toLowerCase().startsWith("json-length:")) {
+                try {
+                    jsonLength = Integer.parseInt(line.substring(12).trim());
+                } catch (NumberFormatException e) {
+                    ServiceUtils.sendFileErrorResponse(out, 400, "Invalid Json-Length format");
+                    return;
+                }
+                break;
+            }
+        }
+
+        if (jsonLength <= 0) {
+            ServiceUtils.sendFileErrorResponse(out, 400, "Missing or invalid Json-Length header");
+            return;
+        }
+
+        ByteArrayOutputStream jsonBuffer = new ByteArrayOutputStream();
+        byte[] tempBuffer = new byte[1024];
+        int totalRead = 0;
+        while (totalRead < jsonLength) {
+            int bytesToRead = Math.min(tempBuffer.length, jsonLength - totalRead);
+            int count = in.read(tempBuffer, 0, bytesToRead);
+            if (count == -1) break;
+            jsonBuffer.write(tempBuffer, 0, count);
+            totalRead += count;
+        }
+
+        if (totalRead < jsonLength) {
+            ServiceUtils.sendFileErrorResponse(out, 400, "Incomplete JSON data");
+            return;
+        }
+
+        String jsonRaw = jsonBuffer.toString("UTF-8").trim();
+        if (jsonRaw.isEmpty() || jsonRaw.charAt(0) != '{') { // 关键修复点
+            ServiceUtils.sendFileErrorResponse(out, 400, "Invalid JSON: must start with '{'");
+            return;
+        }
+
+        try {
+            JSONObject json = new JSONObject(jsonRaw);
+            String savePath = json.optString("savePath", "");
+            if (savePath.isEmpty()) {
+                ServiceUtils.sendFileErrorResponse(out, 400, "Missing savePath parameter");
+                return;
+            }
+            new FileTransfer().handle(in, out, savePath, MAX_FILE_SIZE, 0);
+        } catch (org.json.JSONException e) {
+            ServiceUtils.sendFileErrorResponse(out, 400, "Malformed JSON: " + e.getMessage());
+        }
+    }
+
+    static {
+        HANDLER_MAP.put("/chat", (reqBody, out) -> new Chat().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/createLink", (reqBody, out) -> new CreateLink().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/friend/nickname", (reqBody, out) -> new UpdataFriendsNickname().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/friend/network", (reqBody, out) -> new UpdataFriendsNetwork().handle(reqBody, out));
+        HANDLER_MAP.put("/group/creation", (reqBody, out) -> new CreationGroup().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/group/dismiss", (reqBody, out) -> new DismissGroup().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/group/name", (reqBody, out) -> new UpdateGroupName().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/group/update/network", (reqBody, out) -> new UpdateGroupMembers().handle(reqBody, out, Config.DB_PATH));
+        HANDLER_MAP.put("/group/update/nickname", (reqBody, out) -> new UpdateGroupNickname().handle(reqBody, out, Config.DB_PATH));
+    }
+
+    @FunctionalInterface
+    private interface Handler {
+        void handle(String requestBody, OutputStream out) throws Exception;
+    }
+
 
     // 服务器停止方法
     public void stop() throws IOException {

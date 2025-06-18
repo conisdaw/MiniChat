@@ -1,6 +1,7 @@
 package data;
 
 import core.Config;
+import core.GetUserContent;
 
 import java.io.File;
 import java.sql.Connection;
@@ -10,9 +11,9 @@ import java.sql.Statement;
 
 public class Database {
 
-    public static void main(String[] args) {
-        initializeDatabase(Config.DB_PATH);
-    }
+//    public static void main(String[] args) {
+//        initializeDatabase(Config.DB_PATH);
+//    }
 
     public static void initializeDatabase(String dbPath) {
         File dbFile = new File(dbPath);
@@ -107,11 +108,22 @@ public class Database {
                         "pinned_message_id INTEGER," +
                         "FOREIGN KEY (group_id) REFERENCES Groups(group_id) ON DELETE CASCADE)");
 
+                // 未读消息表
+                stmt.execute("CREATE TABLE IF NOT EXISTS UnreadMessages (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "chat_type TEXT NOT NULL CHECK(chat_type IN ('friend', 'group'))," +
+                        "target_id TEXT NOT NULL," +
+                        "sender_id TEXT NOT NULL," +
+                        "message_type TEXT NOT NULL," +
+                        "content TEXT NOT NULL," +
+                        "timestamp DATETIME NOT NULL)");
+
                 // 创建索引
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_friends_update ON Friends(last_updated)");
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_singlechat_peer ON SingleChatHistory(peer_id)");
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_group_members ON GroupMembers(group_id, member_id)");
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_group_messages ON GroupMessages(group_id, timestamp)");
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_unread_target ON UnreadMessages(target_id)");
 
                 System.out.println("Database initialized successfully");
 
@@ -119,6 +131,8 @@ public class Database {
                 System.err.println("Database initialization failed: " + e.getMessage());
                 e.printStackTrace();
             }
+        } else {
+            Config.PORT = GetUserContent.getPort();
         }
     }
 }
