@@ -26,6 +26,8 @@ public class LoginSystem extends JFrame {
         super("登录");
         setSize(450, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        java.net.URL iconUrl = getClass().getResource(Config.FAVICON_PATH);
+        setIconImage(Toolkit.getDefaultToolkit().getImage(iconUrl));
         setLocationRelativeTo(null);
 
         // 加载自定义字体

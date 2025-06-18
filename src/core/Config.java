@@ -9,6 +9,7 @@ public class Config {
     public static String IP = "";
     public static String USER_ID = "";
     public static String USER_NAME = "";
+    public static final String FAVICON_PATH = "/image/favicon.png";
     public static final String IMAGE_PATH = "/image";
     public static final String FONT_PATH = "/fonts/SourceHanSansSC.otf";
     public static final String FILE_BASE_DIR = "files";

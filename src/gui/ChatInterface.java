@@ -71,6 +71,8 @@ public class ChatInterface extends JFrame {
         super("聊天应用");
         setSize(1000, 700);
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        java.net.URL iconUrl = getClass().getResource(Config.FAVICON_PATH);
+        setIconImage(Toolkit.getDefaultToolkit().getImage(iconUrl));
         setLocationRelativeTo(null);
 
         addWindowListener(new java.awt.event.WindowAdapter() {
